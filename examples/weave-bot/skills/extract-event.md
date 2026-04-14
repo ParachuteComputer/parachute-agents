@@ -5,7 +5,7 @@ trigger:
   type: webhook
   source: discord
   match: contains_url
-model: nvidia/nemotron-nano-9b-v2
+model: nvidia/nemotron-3-super-120b-a12b
 tools: [vault]
 on_save:
   tags: [event]

@@ -10,7 +10,7 @@ A Cloudflare Agents class that:
 
 - **Loads its behavior from a folder of markdown skill files.** Each skill is a frontmatter + body file describing when to fire and what to do.
 - **Has the Parachute Vault MCP wired in by default.** Every skill can read/write notes, traverse the graph, query tags, list links, etc. — without you writing any glue.
-- **Speaks any model via the Vercel AI SDK.** Default is Nemotron Super because the magic is in the knowledge graph, not the model. Swap to Claude, GPT, Gemini, or local Ollama in one config line.
+- **Speaks any model via the Vercel AI SDK.** Default is Nemotron 3 Super (120B MoE) because the magic is in the knowledge graph, not the model. Swap to Claude, GPT, Gemini, or local Ollama in one config line.
 - **Runs on Cloudflare's stateful runtime.** Hibernate when idle, scale to millions of instances, schedule cron tasks, hold WebSocket conversations, persist state in a built-in SQLite per-agent database.
 - **Triggers on what you'd expect:** webhook (Discord/Slack/Telegram/email/HTTP), cron, vault note mutation.
 
@@ -45,7 +45,7 @@ trigger:
   type: webhook
   source: discord
   match: contains_url
-model: nvidia/nemotron-super
+model: nvidia/nemotron-3-super-120b-a12b
 tools: [fetch_url, vault]
 on_save:
   tags: [event]

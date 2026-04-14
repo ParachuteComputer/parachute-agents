@@ -34,7 +34,7 @@ export const skillFrontmatterSchema = z.object({
     vaultTrigger,
     manualTrigger,
   ]),
-  model: z.string().default("nvidia/nemotron-super"),
+  model: z.string().default("nvidia/nemotron-3-super-120b-a12b"),
   tools: z.array(z.string()).default([]),
   on_save: z
     .object({

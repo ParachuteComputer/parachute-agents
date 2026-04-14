@@ -45,7 +45,7 @@ trigger:
   filter:
     tags: [...]
     not_tags: [...]
-model: <provider>/<model>   # e.g. nvidia/nemotron-super, anthropic/claude-sonnet-4-6
+model: <provider>/<model>   # e.g. nvidia/nemotron-3-super-120b-a12b, anthropic/claude-sonnet-4-6
 tools: [fetch_url, vault, ...]
 on_save:
   tags: [...]
