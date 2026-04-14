@@ -1,18 +1,18 @@
-export { ParachuteAgent, SkillRunner } from "./ParachuteAgent.js";
+export { ParachuteAgent, AgentRunner } from "./ParachuteAgent.js";
 export type {
   ParachuteAgentConfig,
-  SkillRunInput,
-  SkillRunResult,
+  AgentRunInput,
+  AgentRunResult,
 } from "./ParachuteAgent.js";
 export { Vault } from "./vault.js";
 export type { VaultConfig } from "./vault.js";
 export {
-  loadSkills,
-  parseSkill,
+  loadAgents,
+  parseAgent,
   matchesWebhook,
-  skillFrontmatterSchema,
-} from "./skills.js";
-export type { Skill, SkillFrontmatter } from "./skills.js";
+  agentFrontmatterSchema,
+} from "./agents.js";
+export type { AgentDefinition, AgentFrontmatter } from "./agents.js";
 export { handleWebhook, handleConnectorWebhook } from "./triggers/webhook.js";
 export type { WebhookPayload, ConnectorWebhookOptions } from "./triggers/webhook.js";
 export {

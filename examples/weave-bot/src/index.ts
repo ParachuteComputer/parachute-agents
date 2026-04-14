@@ -1,5 +1,5 @@
-import { SkillRunner, handleWebhook } from "@openparachute/agents";
-import extractEvent from "../skills/extract-event.md";
+import { AgentRunner, handleWebhook } from "@openparachute/agents";
+import extractEvent from "../agents/extract-event.md";
 
 interface Env {
   PROVIDER_NAME: string;
@@ -10,8 +10,8 @@ interface Env {
 }
 
 function buildRunner(env: Env) {
-  return new SkillRunner({
-    skills: { "extract-event.md": extractEvent },
+  return new AgentRunner({
+    agents: { "extract-event.md": extractEvent },
     vault: { url: env.VAULT_URL, token: env.VAULT_TOKEN },
     provider: {
       name: env.PROVIDER_NAME,

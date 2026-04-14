@@ -1,33 +1,32 @@
 # @openparachute/agents
 
-Framework for building stateful AI agents on Cloudflare with native Parachute Vault integration. The "managed agents" platform that the rest of the Parachute ecosystem composes into.
+Framework for building stateful AI agents on Cloudflare or self-hosted Bun, with native Parachute Vault integration. The "managed agents" platform that the rest of the Parachute ecosystem composes into.
 
 ## What this is
 
 Tiny TypeScript package that wraps `cloudflare/agents` (Durable Objects + scheduling) and the Vercel AI SDK, with two opinions:
 
-1. **Agent behavior is configured by markdown skill files.** Each skill has frontmatter (trigger config, model, tools, save behavior) + a body (system prompt). The framework loads them at boot, registers triggers, and runs the AI SDK loop on fire.
-2. **Parachute Vault is the storage layer.** Every agent gets the vault MCP wired in by default. Skills can read/write notes, query tags, traverse the graph, find paths — no glue code.
+1. **One markdown file = one agent.** Each agent has frontmatter (trigger config, model, tools, save behavior) + a body (system prompt). The framework loads them at boot, registers triggers, and runs the AI SDK loop on fire. No separate "skill" layer — composable reusable prompts will live in the vault later (tagged `agent-skill`), not in a framework abstraction.
+2. **Parachute Vault is the storage layer.** Every agent gets the vault MCP wired in by default. Agents can read/write notes, query tags, traverse the graph, find paths — no glue code.
 
 ## Why this exists
 
-Bespoke agent stacks like `weave-bot-orb` (Python + FastAPI + Playwright + Grist + Discord + Slack adapters) are ~3000 lines for what is structurally a "URL in → AI extract → save somewhere" pipeline. With the vault as the substrate and CF Agents as the runtime, the same pipeline collapses to one TypeScript file + one markdown skill. The vault handles the structured store. The skill markdown handles the prompt + behavior. Everything else is framework.
+Bespoke agent stacks like `weave-bot-orb` (Python + FastAPI + Playwright + Grist + Discord + Slack adapters) are ~3000 lines for what is structurally a "URL in → AI extract → save somewhere" pipeline. With the vault as the substrate and this framework as the runtime, the same pipeline collapses to one TypeScript file + one markdown agent. The vault handles the structured store. The agent markdown handles the prompt + behavior. Everything else is framework.
 
 ## Architecture
 
 ```
 src/
-├── ParachuteAgent.ts   # base class extending cloudflare/agents Agent<Env, State>
-├── skills.ts            # skill loader: frontmatter + body → registered handler
-├── vault.ts             # MCP client for the configured Parachute Vault
-├── triggers/
-│   ├── webhook.ts       # Discord/Slack/HTTP webhook → match → fire skill
-│   ├── cron.ts          # cron trigger
-│   └── vault.ts         # vault note mutation → fire skill
-└── index.ts
+├── ParachuteAgent.ts      # AgentRunner (stateless) + ParachuteAgent (DO wrapper)
+├── agents.ts              # agent loader: frontmatter + body → registered handler
+├── vault.ts               # MCP client for the configured Parachute Vault
+├── connectors/            # Telegram / Discord / Slack (soon) webhook + reply
+├── adapters/node.ts       # Bun HTTP server + filesystem agent loader
+└── triggers/
+    └── webhook.ts         # generic + connector-driven webhook → match → fire
 ```
 
-## Skill schema (sketch)
+## Agent schema (sketch)
 
 ```yaml
 ---
@@ -57,19 +56,14 @@ System prompt body in markdown.
 
 ## Tech stack
 
-- **Runtime:** Cloudflare Workers + Durable Objects (via `agents` package)
+- **Runtime:** Cloudflare Workers + Durable Objects (via `agents` package), or self-hosted Bun
 - **AI:** Vercel AI SDK (`ai` package) — provider-agnostic
-- **Vault MCP:** the standard Parachute Vault HTTP MCP at `<vault-url>/mcp`
+- **Vault MCP:** the standard Parachute Vault HTTP MCP at `<vault-url>/mcp` (Streamable HTTP transport)
 - **Browser fetch:** Cloudflare Browser Rendering for JS-heavy pages, plain fetch for the rest
-- **Config:** TypeScript at boot + markdown skills loaded at deploy time
-
-## Status
-
-Sketch. README + CLAUDE.md only. Real implementation pending alignment with Aaron on the shape.
+- **Config:** TypeScript at boot + markdown agents loaded at deploy time (CF) or startup (Bun)
 
 ## Conventions for tentacles working in this repo
 
 - Read this CLAUDE.md and the README first
-- This is a NEW repo — no legacy to preserve
 - The MVP is "rebuild weave-bot-orb on this framework as the example" — that's the test
-- Don't over-engineer the skill schema. Start with what weave-bot-orb actually does + one cron skill (weekly summary), and let the schema grow from real use
+- Don't over-engineer the agent schema. Start with what weave-bot-orb actually does + one cron agent (weekly summary), and let the schema grow from real use

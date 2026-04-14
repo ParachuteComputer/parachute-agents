@@ -1,6 +1,6 @@
 /**
  * Platforms the framework can route to. Must match the `trigger.source` enum in
- * `skills.ts` — extending this list requires updating both.
+ * `agents.ts` — extending this list requires updating both.
  */
 export type Platform = "telegram" | "discord" | "slack" | "http";
 
@@ -31,7 +31,7 @@ export interface OutgoingMessage {
  * a platform's webhook shape + outbound API — no state, no storage.
  */
 export interface Connector<Config = unknown> {
-  /** Matches the `trigger.source` field in skill frontmatter. */
+  /** Matches the `trigger.source` field in agent frontmatter. */
   platform: Platform;
   /**
    * Parse a platform webhook into a normalized message, or return null if the

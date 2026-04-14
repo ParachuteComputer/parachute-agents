@@ -1,6 +1,6 @@
 # weave-bot-selfhosted
 
-Same skill, same vault, same framework — running as a Bun HTTP server on any machine. No Cloudflare account required.
+Same agent file, same vault, same framework — running as a Bun HTTP server on any machine. No Cloudflare account required.
 
 ## Run
 

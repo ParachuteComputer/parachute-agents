@@ -1,4 +1,4 @@
-import type { SkillRunner } from "../ParachuteAgent.js";
+import type { AgentRunner } from "../ParachuteAgent.js";
 import type { Connector, IncomingMessage } from "../connectors/types.js";
 
 export interface WebhookPayload {
@@ -7,12 +7,12 @@ export interface WebhookPayload {
   meta?: Record<string, unknown>;
 }
 
-type RunnerLike = Pick<SkillRunner, "matchWebhook" | "runSkill">;
+type RunnerLike = Pick<AgentRunner, "matchWebhook" | "runAgent">;
 
 /**
  * Parse a generic `{text, source, meta}` JSON webhook body, match it against the
- * registered skills, fire the first match. Returns the skill output as JSON or
- * 204 if no skill matched.
+ * registered agents, fire the first match. Returns the agent output as JSON or
+ * 204 if no agent matched.
  *
  * For platform-specific handling (Telegram, Discord), prefer {@link handleConnectorWebhook}.
  */
@@ -27,10 +27,10 @@ export async function handleWebhook(
     return new Response("invalid JSON", { status: 400 });
   }
 
-  const skill = runner.matchWebhook({ text: payload.text, source: payload.source });
-  if (!skill) return new Response(null, { status: 204 });
+  const agent = runner.matchWebhook({ text: payload.text, source: payload.source });
+  if (!agent) return new Response(null, { status: 204 });
 
-  const result = await runner.runSkill(skill.frontmatter.name, {
+  const result = await runner.runAgent(agent.frontmatter.name, {
     user: payload.text,
     context: payload.meta,
   });
@@ -40,12 +40,12 @@ export async function handleWebhook(
 export interface ConnectorWebhookOptions<Config> {
   connector: Connector<Config>;
   config: Config;
-  /** If true, send the skill's text output back to the platform via connector.reply(). */
+  /** If true, send the agent's text output back to the platform via connector.reply(). */
   autoReply?: boolean;
 }
 
 /**
- * Parse a platform webhook through a {@link Connector}, match a skill, run it,
+ * Parse a platform webhook through a {@link Connector}, match an agent, run it,
  * optionally reply on the platform. Returns a JSON response describing what happened.
  */
 export async function handleConnectorWebhook<Config>(
@@ -56,10 +56,10 @@ export async function handleConnectorWebhook<Config>(
   const msg: IncomingMessage | null = await opts.connector.parse(request);
   if (!msg) return new Response(null, { status: 204 });
 
-  const skill = runner.matchWebhook({ text: msg.text, source: msg.platform });
-  if (!skill) return new Response(null, { status: 204 });
+  const agent = runner.matchWebhook({ text: msg.text, source: msg.platform });
+  if (!agent) return new Response(null, { status: 204 });
 
-  const result = await runner.runSkill(skill.frontmatter.name, {
+  const result = await runner.runAgent(agent.frontmatter.name, {
     user: msg.text,
     context: { sender: msg.sender, channelId: msg.channelId, meta: msg.meta },
   });
@@ -72,7 +72,7 @@ export async function handleConnectorWebhook<Config>(
   }
 
   return Response.json({
-    skill: result.skill,
+    agent: result.agent,
     text: result.text,
     toolCalls: result.toolCalls,
     channelId: msg.channelId,

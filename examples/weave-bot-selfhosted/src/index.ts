@@ -10,7 +10,7 @@ function required(name: string): string {
 }
 
 const { server } = await startSelfHosted({
-  skillsDir: join(import.meta.dir, "..", "skills"),
+  agentsDir: join(import.meta.dir, "..", "agents"),
   config: {
     vault: {
       url: required("VAULT_URL"),

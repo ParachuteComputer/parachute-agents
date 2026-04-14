@@ -1,14 +1,14 @@
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join } from "node:path";
-import { SkillRunner, type ParachuteAgentConfig } from "../ParachuteAgent.js";
+import { AgentRunner, type ParachuteAgentConfig } from "../ParachuteAgent.js";
 import { handleWebhook, handleConnectorWebhook } from "../triggers/webhook.js";
 import type { Connector } from "../connectors/types.js";
 
 /**
  * Recursively load every `*.md` file under `dir` into the `{path: source}` map that
- * `SkillRunner` expects. Paths are relative to `dir` so the loader error messages stay tidy.
+ * `AgentRunner` expects. Paths are relative to `dir` so loader error messages stay tidy.
  */
-export async function loadSkillsFromDir(dir: string): Promise<Record<string, string>> {
+export async function loadAgentsFromDir(dir: string): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   const walk = async (current: string, prefix: string) => {
     const entries = await readdir(current, { withFileTypes: true });
@@ -47,7 +47,7 @@ export interface ServeOptions {
  * {@link serveBun}, but also exported so hosts with their own HTTP stack (Hono,
  * itty-router, raw Node http) can mount it.
  */
-export function buildHandler(runner: SkillRunner, opts: ServeOptions = {}) {
+export function buildHandler(runner: AgentRunner, opts: ServeOptions = {}) {
   const webhookPath = opts.webhookPath ?? "/webhook";
   const connectors = opts.connectors ?? [];
 
@@ -76,7 +76,7 @@ export function buildHandler(runner: SkillRunner, opts: ServeOptions = {}) {
  * is deliberately omitted, use {@link buildHandler} with your own HTTP layer instead.
  */
 export function serveBun(
-  runner: SkillRunner,
+  runner: AgentRunner,
   opts: ServeOptions = {},
 ): { stop: () => void; port: number; hostname: string } {
   const BunGlobal = (globalThis as { Bun?: { serve: (o: unknown) => unknown } }).Bun;
@@ -95,16 +95,16 @@ export function serveBun(
 }
 
 /**
- * Convenience: load skills from a directory, construct the runner, serve under Bun.
+ * Convenience: load agents from a directory, construct the runner, serve under Bun.
  * One call for the typical self-hosted setup.
  */
 export async function startSelfHosted(args: {
-  skillsDir: string;
-  config: Omit<ParachuteAgentConfig, "skills">;
+  agentsDir: string;
+  config: Omit<ParachuteAgentConfig, "agents">;
   serve?: ServeOptions;
-}): Promise<{ runner: SkillRunner; server: { stop: () => void; port: number; hostname: string } }> {
-  const skills = await loadSkillsFromDir(args.skillsDir);
-  const runner = new SkillRunner({ ...args.config, skills });
+}): Promise<{ runner: AgentRunner; server: { stop: () => void; port: number; hostname: string } }> {
+  const agents = await loadAgentsFromDir(args.agentsDir);
+  const runner = new AgentRunner({ ...args.config, agents });
   const server = serveBun(runner, args.serve);
   return { runner, server };
 }
