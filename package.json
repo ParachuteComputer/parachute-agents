@@ -1,0 +1,36 @@
+{
+  "name": "@openparachute/agents",
+  "version": "0.0.1",
+  "description": "Framework for building stateful AI agents on Cloudflare with native Parachute Vault integration.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./triggers/webhook": {
+      "types": "./dist/triggers/webhook.d.ts",
+      "import": "./dist/triggers/webhook.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^0.2.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "agents": "^0.0.80",
+    "ai": "^4.0.0",
+    "gray-matter": "^4.0.3",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "typescript": "^5.5.0",
+    "wrangler": "^3.90.0"
+  }
+}

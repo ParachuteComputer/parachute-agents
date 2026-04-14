@@ -1,0 +1,22 @@
+name = "weave-bot"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+rules = [
+  { type = "Text", globs = ["**/*.md"], fallthrough = true }
+]
+
+[durable_objects]
+bindings = [
+  { name = "AGENT", class_name = "WeaveBot" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WeaveBot"]
+
+[vars]
+PROVIDER_BASE_URL = "https://openrouter.ai/api/v1"
+PROVIDER_NAME     = "openrouter"
+VAULT_URL         = "https://vault.example.com/mcp"

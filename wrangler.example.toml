@@ -1,0 +1,30 @@
+# Example wrangler config for a downstream app using @openparachute/agents.
+# Copy into your app's root as wrangler.toml and adjust.
+
+name = "my-parachute-agent"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+# Load skill markdown as raw strings at build time.
+rules = [
+  { type = "Text", globs = ["**/*.md"], fallthrough = true }
+]
+
+[durable_objects]
+bindings = [
+  { name = "AGENT", class_name = "MyAgent" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MyAgent"]
+
+# Secrets (set via `wrangler secret put`):
+#   PROVIDER_API_KEY  — OpenRouter / together.ai key for model access
+#   VAULT_TOKEN       — Bearer token for the Parachute Vault MCP
+
+[vars]
+PROVIDER_BASE_URL = "https://openrouter.ai/api/v1"
+PROVIDER_NAME     = "openrouter"
+VAULT_URL         = "https://vault.example.com/mcp"
