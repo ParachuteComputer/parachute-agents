@@ -1,6 +1,6 @@
 # @openparachute/agents
 
-**Parachute Managed Agents.** A thin framework for building stateful AI agents that live on Cloudflare and natively know how to talk to a Parachute Vault.
+**Parachute Managed Agents.** A thin framework for building stateful AI agents that natively know how to talk to a Parachute Vault. Deploy to Cloudflare Workers for edge + per-agent Durable Objects, or run the same skills on a self-hosted Bun server — skill markdown is identical across both.
 
 > **Status:** Sketch. Designed in collaboration with Aaron in an open Telegram brainstorm. Inspired by [weave-bot-orb](https://github.com/woven-web/weave-bot-orb) — same problem (Discord bot watches for URLs → AI extracts events → save to structured store), one tenth the surface area.
 
@@ -11,8 +11,9 @@ A Cloudflare Agents class that:
 - **Loads its behavior from a folder of markdown skill files.** Each skill is a frontmatter + body file describing when to fire and what to do.
 - **Has the Parachute Vault MCP wired in by default.** Every skill can read/write notes, traverse the graph, query tags, list links, etc. — without you writing any glue.
 - **Speaks any model via the Vercel AI SDK.** Default is Nemotron 3 Super (120B MoE) because the magic is in the knowledge graph, not the model. Swap to Claude, GPT, Gemini, or local Ollama in one config line.
-- **Runs on Cloudflare's stateful runtime.** Hibernate when idle, scale to millions of instances, schedule cron tasks, hold WebSocket conversations, persist state in a built-in SQLite per-agent database.
-- **Triggers on what you'd expect:** webhook (Discord/Slack/Telegram/email/HTTP), cron, vault note mutation.
+- **Runs on Cloudflare's stateful runtime *or* self-hosted Bun.** Same skills, same runner, two deployment modes. On CF you get Durable Objects + hibernation + edge. On Bun you get a single `bun src/index.ts` on any box.
+- **Native connectors for Telegram, Discord, (Slack soon).** Connectors parse platform webhooks into a normalized `IncomingMessage` shape and reply via platform APIs — no per-platform glue in your skills.
+- **Triggers on what you'd expect:** webhook (Discord/Slack/Telegram/HTTP), cron, vault note mutation.
 
 The result: a Discord bot that watches a channel for URLs, extracts event details with an AI, and saves them into your Parachute Vault is roughly 50 lines of TypeScript + one markdown skill file.
 
@@ -21,6 +22,31 @@ The result: a Discord bot that watches a channel for URLs, extracts event detail
 `weave-bot-orb` is ~3000 lines of Python across 3 services (FastAPI agent + Discord bot + Slack bot), uses Playwright + per-org config + per-org Grist documents + multi-platform webhook routing. It works, but every new feature touches three places and storage is bolted on as a side effect.
 
 A `@openparachute/agents` agent is one Cloudflare Worker, one folder of markdown skills, and one vault. New features are new markdown files. Storage is the vault — no Grist, no SQLite-per-platform, no callback dance.
+
+## Two deployment modes
+
+Pick whichever suits the app — **the skill markdown is identical**, only the runtime wrapper differs.
+
+### Cloudflare Workers + Durable Objects
+
+```
+my-agent/
+├── wrangler.toml          # rules = [{ type = "Text", globs = ["**/*.md"] }]
+├── skills/*.md            # imported as raw strings at build time
+└── src/index.ts           # extend ParachuteAgent, register as DO
+```
+
+`examples/weave-bot/` is the reference.
+
+### Self-hosted Bun
+
+```
+my-agent/
+├── skills/*.md            # loaded from disk at startup
+└── src/index.ts           # import { startSelfHosted } from "@openparachute/agents/adapters/node"
+```
+
+`examples/weave-bot-selfhosted/` is the reference. Run with `bun src/index.ts`.
 
 ## The shape (sketch)
 

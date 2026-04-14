@@ -1,0 +1,45 @@
+import { join } from "node:path";
+import { startSelfHosted } from "@openparachute/agents/adapters/node";
+import { telegram, discord } from "@openparachute/agents/connectors";
+
+const env = process.env;
+function required(name: string): string {
+  const value = env[name];
+  if (!value) throw new Error(`missing env var: ${name}`);
+  return value;
+}
+
+const { server } = await startSelfHosted({
+  skillsDir: join(import.meta.dir, "..", "skills"),
+  config: {
+    vault: {
+      url: required("VAULT_URL"),
+      token: required("VAULT_TOKEN"),
+    },
+    provider: {
+      name: env.PROVIDER_NAME ?? "openrouter",
+      baseURL: env.PROVIDER_BASE_URL ?? "https://openrouter.ai/api/v1",
+      apiKey: required("PROVIDER_API_KEY"),
+    },
+  },
+  serve: {
+    port: Number(env.PORT ?? 3000),
+    webhookPath: "/webhook",
+    connectors: [
+      {
+        path: "/webhook/telegram",
+        connector: telegram,
+        config: { botToken: required("TELEGRAM_BOT_TOKEN") },
+        autoReply: true,
+      },
+      {
+        path: "/webhook/discord",
+        connector: discord,
+        config: { botToken: required("DISCORD_BOT_TOKEN") },
+        autoReply: true,
+      },
+    ],
+  },
+});
+
+console.log(`weave-bot-selfhosted listening on :${server.port}`);

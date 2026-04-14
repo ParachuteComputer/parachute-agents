@@ -13,5 +13,17 @@ export {
   skillFrontmatterSchema,
 } from "./skills.js";
 export type { Skill, SkillFrontmatter } from "./skills.js";
-export { handleWebhook } from "./triggers/webhook.js";
-export type { WebhookPayload } from "./triggers/webhook.js";
+export { handleWebhook, handleConnectorWebhook } from "./triggers/webhook.js";
+export type { WebhookPayload, ConnectorWebhookOptions } from "./triggers/webhook.js";
+export {
+  telegram,
+  discord,
+} from "./connectors/index.js";
+export type {
+  Connector,
+  IncomingMessage,
+  OutgoingMessage,
+  Platform,
+  TelegramConfig,
+  DiscordConfig,
+} from "./connectors/index.js";
