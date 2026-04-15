@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { MockLanguageModelV1 } from "ai/test";
+import { tool } from "ai";
+import { z } from "zod";
 import type { LanguageModelV1CallOptions } from "@ai-sdk/provider";
 import { AgentRunner } from "../src/runner.js";
 import { MemoryConversationStore } from "../src/conversation-store.js";
@@ -208,6 +210,124 @@ test("failing run is still recorded with error set and output null", async () =>
   expect(runs[0]!.output).toBeNull();
   expect(runs[0]!.error).toBe("boom");
   expect(runs[0]!.trigger).toBe("manual");
+});
+
+const mcpAgent = `---
+name: mcp-agent
+trigger:
+  type: webhook
+  source: any
+  match: always
+model: test-model
+tools:
+  - mcp:
+      name: gmail
+      url: https://mcp.gmail.com/mcp
+      auth:
+        type: bearer
+        token: abc
+---
+system`;
+
+test("runAgent: mcp tool entry is instantiated, tools merged, client closed after run", async () => {
+  const capture = { calls: [] as LanguageModelV1CallOptions[] };
+  let closed = 0;
+  let instantiated = 0;
+  const r = new AgentRunner({
+    agents: { "mcp.md": mcpAgent },
+    provider: { name: "x", baseURL: "http://x", apiKey: "x" },
+    createMcpClient: async () => {
+      instantiated++;
+      return {
+        tools: async () => ({
+          send_email: tool({
+            description: "send mail",
+            parameters: z.object({ to: z.string() }),
+            execute: async () => "sent",
+          }),
+        }),
+        close: async () => {
+          closed++;
+        },
+      };
+    },
+  });
+
+  await r.runAgent("mcp-agent", { text: "hi" }, { model: makeMock(capture, "ok") });
+  expect(instantiated).toBe(1);
+  expect(closed).toBe(1);
+  const tools = capture.calls[0]!.mode.type === "regular" ? capture.calls[0]!.mode.tools ?? [] : [];
+  expect(tools.some((t) => t.name === "send_email")).toBe(true);
+});
+
+const twoMcpAgent = `---
+name: two-mcp
+trigger:
+  type: webhook
+  source: any
+  match: always
+model: test-model
+tools:
+  - mcp:
+      name: first
+      url: https://mcp.first.com/mcp
+      auth:
+        type: bearer
+        token: a
+  - mcp:
+      name: second
+      url: https://mcp.second.com/mcp
+      auth:
+        type: bearer
+        token: b
+---
+system`;
+
+test("runAgent: if a later mcp client creation throws, earlier clients are still closed", async () => {
+  let closed = 0;
+  let made = 0;
+  const r = new AgentRunner({
+    agents: { "two.md": twoMcpAgent },
+    provider: { name: "x", baseURL: "http://x", apiKey: "x" },
+    createMcpClient: async (cfg) => {
+      if (cfg.name === "second") throw new Error("second failed");
+      made++;
+      return {
+        tools: async () => ({}),
+        close: async () => {
+          closed++;
+        },
+      };
+    },
+  });
+  await expect(
+    r.runAgent("two-mcp", { text: "hi" }),
+  ).rejects.toThrow("second failed");
+  expect(made).toBe(1);
+  expect(closed).toBe(1);
+});
+
+test("runAgent: mcp client is closed even when generateText throws", async () => {
+  let closed = 0;
+  const r = new AgentRunner({
+    agents: { "mcp.md": mcpAgent },
+    provider: { name: "x", baseURL: "http://x", apiKey: "x" },
+    createMcpClient: async () => ({
+      tools: async () => ({}),
+      close: async () => {
+        closed++;
+      },
+    }),
+  });
+  const exploding = new MockLanguageModelV1({
+    doGenerate: async () => {
+      throw new Error("kaboom");
+    },
+  });
+  await expect(
+    r.runAgent("mcp-agent", { text: "hi" }, { model: exploding }),
+  ).rejects.toThrow("kaboom");
+  expect(closed).toBe(1);
 });
 
 test("trigger option is stamped on the recorded run", async () => {

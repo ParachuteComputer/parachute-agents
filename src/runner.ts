@@ -1,7 +1,13 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText, type CoreMessage, type LanguageModel, type Tool } from "ai";
-import { loadAgents, matchesWebhook, type AgentDefinition } from "./agents.js";
+import {
+  isMcpToolEntry,
+  loadAgents,
+  matchesWebhook,
+  type AgentDefinition,
+} from "./agents.js";
 import { Vault, type VaultConfig } from "./vault.js";
+import { createMcpClient, type McpClient } from "./mcp/connector.js";
 import {
   MemoryConversationStore,
   appendTurns,
@@ -35,6 +41,8 @@ export interface ParachuteAgentConfig {
   scheduler?: Scheduler;
   /** Run log for observability. Defaults to an in-process {@link MemoryRunLog}. */
   runLog?: RunLog;
+  /** Test hook: override the MCP client factory so tests don't open real sockets. */
+  createMcpClient?: typeof createMcpClient;
 }
 
 export interface AgentRunInput {
@@ -162,26 +170,40 @@ export class AgentRunner {
       })(agent.frontmatter.model);
 
     const tools: Record<string, Tool> = { ...(this.config.tools ?? {}) };
-    if (agent.frontmatter.tools.includes("vault") && this.config.vault) {
-      Object.assign(tools, await new Vault(this.config.vault).tools());
-    }
+    const mcpClients: McpClient[] = [];
+    const mcpFactory = this.config.createMcpClient ?? createMcpClient;
+    const entries = agent.frontmatter.tools;
 
     const conversationId = options.conversationId;
-    const historyLimit = options.historyLimit ?? 20;
-    const history = conversationId
-      ? await this._conversationStore.history(conversationId, historyLimit)
-      : [];
-
     const startedAt = Date.now();
-    const messages: CoreMessage[] = [
-      ...history.map((t) => ({ role: t.role, content: t.content }) as CoreMessage),
-      { role: "user", content: text },
-    ];
-
     const runId = crypto.randomUUID();
     const runTrigger: RunTrigger = options.trigger ?? "manual";
 
     try {
+      // Tool setup is inside the try block so that a failure while wiring up
+      // MCP clients (e.g. the second factory throws) still closes any clients
+      // already created by the finally below and still records a failed run.
+      const wantsVault = entries.some((e) => e === "vault");
+      if (wantsVault && this.config.vault) {
+        Object.assign(tools, await new Vault(this.config.vault).tools());
+      }
+      for (const entry of entries) {
+        if (!isMcpToolEntry(entry)) continue;
+        const client = await mcpFactory(entry.mcp);
+        mcpClients.push(client);
+        Object.assign(tools, await client.tools());
+      }
+
+      const historyLimit = options.historyLimit ?? 20;
+      const history = conversationId
+        ? await this._conversationStore.history(conversationId, historyLimit)
+        : [];
+
+      const messages: CoreMessage[] = [
+        ...history.map((t) => ({ role: t.role, content: t.content }) as CoreMessage),
+        { role: "user", content: text },
+      ];
+
       const result = await generateText({
         model,
         system: agent.systemPrompt,
@@ -231,6 +253,8 @@ export class AgentRunner {
         trigger: runTrigger,
       });
       throw err;
+    } finally {
+      await Promise.allSettled(mcpClients.map((c) => c.close()));
     }
   }
 }
