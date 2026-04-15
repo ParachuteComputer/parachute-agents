@@ -3,6 +3,8 @@ import { extname, join } from "node:path";
 import { AgentRunner, type ParachuteAgentConfig } from "../runner.js";
 import { handleWebhook, handleConnectorWebhook } from "../triggers/webhook.js";
 import type { Connector } from "../connectors/types.js";
+import { NodeCronScheduler } from "../scheduler-node.js";
+import type { Scheduler } from "../scheduler.js";
 
 /**
  * Recursively load every `*.md` file under `dir` into the `{path: source}` map that
@@ -102,9 +104,24 @@ export async function startSelfHosted(args: {
   agentsDir: string;
   config: Omit<ParachuteAgentConfig, "agents">;
   serve?: ServeOptions;
-}): Promise<{ runner: AgentRunner; server: { stop: () => void; port: number; hostname: string } }> {
+}): Promise<{
+  runner: AgentRunner;
+  server: { stop: () => void; port: number; hostname: string };
+  scheduler: Scheduler;
+  /** Stop both server and scheduler. */
+  stop: () => void;
+}> {
   const agents = await loadAgentsFromDir(args.agentsDir);
-  const runner = new AgentRunner({ ...args.config, agents });
+  const scheduler: Scheduler = args.config.scheduler ?? new NodeCronScheduler();
+  const runner = new AgentRunner({ ...args.config, agents, scheduler });
   const server = serveBun(runner, args.serve);
-  return { runner, server };
+  return {
+    runner,
+    server,
+    scheduler,
+    stop: () => {
+      scheduler.cancelAll();
+      server.stop();
+    },
+  };
 }

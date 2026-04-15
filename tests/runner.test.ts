@@ -3,6 +3,16 @@ import { MockLanguageModelV1 } from "ai/test";
 import type { LanguageModelV1CallOptions } from "@ai-sdk/provider";
 import { AgentRunner } from "../src/runner.js";
 import { MemoryConversationStore } from "../src/conversation-store.js";
+import type { Scheduler } from "../src/scheduler.js";
+
+const cronAgent = `---
+name: daily-digest
+trigger:
+  type: cron
+  schedule: "0 9 * * *"
+model: test-model
+---
+system`;
 
 const extractEvent = `---
 name: extract-event
@@ -129,4 +139,37 @@ test("runAgent without conversationId: no history loaded, no turns appended", as
   expect(prompt.filter((p) => p.role === "user")).toHaveLength(1);
   expect(prompt.filter((p) => p.role === "assistant")).toHaveLength(0);
   expect(await store.history("anything", 10)).toEqual([]);
+});
+
+function fakeScheduler() {
+  const calls: Array<{ id: string; cron: string }> = [];
+  const scheduler: Scheduler = {
+    schedule: (id, cron, _handler) => {
+      calls.push({ id, cron });
+    },
+    cancel: () => {},
+    cancelAll: () => {},
+  };
+  return { scheduler, calls };
+}
+
+test("runner with scheduler: cron agents auto-register", () => {
+  const { scheduler, calls } = fakeScheduler();
+  new AgentRunner({
+    agents: { "digest.md": cronAgent, "general.md": generalChat },
+    provider: { name: "x", baseURL: "http://x", apiKey: "x" },
+    scheduler,
+  });
+  expect(calls).toEqual([{ id: "daily-digest", cron: "0 9 * * *" }]);
+});
+
+test("runner without scheduler: cron agents load but don't register", () => {
+  const { scheduler, calls } = fakeScheduler();
+  const r = new AgentRunner({
+    agents: { "digest.md": cronAgent },
+    provider: { name: "x", baseURL: "http://x", apiKey: "x" },
+  });
+  expect(r.agents().has("daily-digest")).toBe(true);
+  expect(calls).toHaveLength(0);
+  void scheduler;
 });

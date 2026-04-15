@@ -29,6 +29,10 @@
     "./sqlite": {
       "types": "./dist/conversation-store-sqlite.d.ts",
       "import": "./dist/conversation-store-sqlite.js"
+    },
+    "./scheduler-node": {
+      "types": "./dist/scheduler-node.d.ts",
+      "import": "./dist/scheduler-node.js"
     }
   },
   "files": ["dist", "src"],
@@ -42,6 +46,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "agents": "^0.0.80",
     "ai": "^4.0.0",
+    "croner": "^10.0.1",
     "gray-matter": "^4.0.3",
     "zod": "^3.23.0"
   },
