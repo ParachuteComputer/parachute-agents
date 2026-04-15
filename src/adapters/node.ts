@@ -9,6 +9,8 @@ import type { Scheduler } from "../scheduler.js";
 /**
  * Recursively load every `*.md` file under `dir` into the `{path: source}` map that
  * `AgentRunner` expects. Paths are relative to `dir` so loader error messages stay tidy.
+ *
+ * @deprecated Use `loadAgents({type: "dir", path: dir})` from `@openparachute/agent`.
  */
 export async function loadAgentsFromDir(dir: string): Promise<Record<string, string>> {
   const out: Record<string, string> = {};

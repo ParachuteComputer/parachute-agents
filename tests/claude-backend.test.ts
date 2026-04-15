@@ -1,44 +1,56 @@
 import { expect, test } from "bun:test";
 import { MockLanguageModelV1 } from "ai/test";
-import type Anthropic from "@anthropic-ai/sdk";
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { AgentRunner } from "../src/runner.js";
-import { runClaudeBackend, type ClaudeTool } from "../src/backends/claude.js";
+import { runClaudeBackend, type ClaudeQueryFn } from "../src/backends/claude.js";
 
-// Mock an Anthropic client by implementing the one method we call. The SDK
-// types are huge; cast the shape we care about and keep the mock tight.
-interface MsgCreateArgs {
-  model: string;
-  max_tokens: number;
-  system?: string;
-  messages: Array<{ role: string; content: unknown }>;
-  tools?: Array<{ name: string }>;
-}
-function mockClient(
-  steps: Array<Partial<Anthropic.Message> & { content: Anthropic.ContentBlock[] }>,
-  seen: { calls: MsgCreateArgs[] } = { calls: [] },
-) {
-  let i = 0;
-  const client = {
-    messages: {
-      create: async (args: MsgCreateArgs) => {
-        // Snapshot the args so later mutations to the shared `turns` array
-        // inside the backend don't retroactively change what we captured.
-        seen.calls.push({ ...args, messages: [...args.messages] });
-        const step = steps[i++];
-        if (!step) throw new Error(`mockClient: exhausted after ${i - 1} calls`);
-        return {
-          id: `msg_${i}`,
-          type: "message",
-          role: "assistant",
-          model: args.model,
-          stop_reason: step.stop_reason ?? "end_turn",
-          usage: step.usage ?? { input_tokens: 1, output_tokens: 1 },
-          content: step.content,
-        } as Anthropic.Message;
-      },
-    },
+// Build a query() replacement that yields a canned stream of SDK messages,
+// and captures the call args so we can assert on options/prompt.
+function mockQuery(
+  steps: SDKMessage[],
+  seen: { calls: Array<{ prompt: unknown; options: unknown }> } = { calls: [] },
+): { queryFn: ClaudeQueryFn; seen: typeof seen } {
+  const queryFn: ClaudeQueryFn = (args) => {
+    seen.calls.push({ prompt: args.prompt, options: args.options });
+    return (async function* () {
+      for (const m of steps) yield m;
+    })();
   };
-  return { client: client as unknown as Anthropic, seen };
+  return { queryFn, seen };
+}
+
+function asResult(text: string): SDKMessage {
+  return {
+    type: "result",
+    subtype: "success",
+    result: text,
+    duration_ms: 1,
+    duration_api_ms: 1,
+    is_error: false,
+    num_turns: 1,
+    stop_reason: "end_turn",
+    total_cost_usd: 0,
+    usage: {} as never,
+    modelUsage: {},
+    permission_denials: [],
+    uuid: "00000000-0000-0000-0000-000000000000",
+    session_id: "s",
+  } as SDKMessage;
+}
+
+function asAssistantToolUse(): SDKMessage {
+  return {
+    type: "assistant",
+    message: {
+      content: [
+        { type: "text", text: "ok" },
+        { type: "tool_use", id: "t1", name: "foo", input: {} },
+      ],
+    } as never,
+    parent_tool_use_id: null,
+    uuid: "00000000-0000-0000-0000-000000000001",
+    session_id: "s",
+  } as SDKMessage;
 }
 
 const echoAgent = `---
@@ -50,15 +62,10 @@ model: claude-sonnet-4-5
 ---
 you are echo`;
 
-test("runClaudeBackend: single-turn end_turn returns text and zero tool calls", async () => {
-  const { client, seen } = mockClient([
-    {
-      stop_reason: "end_turn",
-      content: [{ type: "text", text: "hello world", citations: null } as Anthropic.TextBlock],
-    },
-  ]);
-  const result = await runClaudeBackend({
-    auth: {},
+test("runClaudeBackend: success result → text, tool_use blocks counted", async () => {
+  const { queryFn, seen } = mockQuery([asAssistantToolUse(), asResult("hello world")]);
+  const out = await runClaudeBackend({
+    auth: { apiKey: "k" },
     agent: {
       frontmatter: {
         name: "x",
@@ -72,215 +79,196 @@ test("runClaudeBackend: single-turn end_turn returns text and zero tool calls", 
     },
     system: "sys",
     messages: [{ role: "user", content: "hi" }],
-    maxSteps: 8,
-    tools: [],
-    client,
+    maxSteps: 5,
+    queryFn,
   });
-  expect(result.text).toBe("hello world");
-  expect(result.toolCalls).toBe(0);
-  expect(seen.calls).toHaveLength(1);
-  expect(seen.calls[0]!.system).toBe("sys");
-  expect(seen.calls[0]!.tools).toBeUndefined();
+  expect(out.text).toBe("hello world");
+  expect(out.toolCalls).toBe(1);
+  const opts = seen.calls[0]!.options as {
+    systemPrompt: string;
+    maxTurns: number;
+    env: Record<string, string>;
+    permissionMode: string;
+    tools: unknown[];
+  };
+  expect(opts.systemPrompt).toBe("sys");
+  expect(opts.maxTurns).toBe(5);
+  expect(opts.env.ANTHROPIC_API_KEY).toBe("k");
+  expect(opts.permissionMode).toBe("bypassPermissions");
+  expect(opts.tools).toEqual([]);
 });
 
-test("runClaudeBackend: tool_use → tool_result → final text counts tool calls", async () => {
-  const tool: ClaudeTool = {
-    name: "add",
-    description: "add two",
-    input_schema: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } } },
-    execute: async (args) => {
-      const { a, b } = args as { a: number; b: number };
-      return String(a + b);
-    },
-  };
-  const { client, seen } = mockClient([
-    {
-      stop_reason: "tool_use",
-      content: [
-        { type: "text", text: "I'll compute it.", citations: null } as Anthropic.TextBlock,
-        {
-          type: "tool_use",
-          id: "toolu_1",
-          name: "add",
-          input: { a: 2, b: 3 },
-        } as Anthropic.ToolUseBlock,
-      ],
-    },
-    {
-      stop_reason: "end_turn",
-      content: [{ type: "text", text: "answer is 5", citations: null } as Anthropic.TextBlock],
-    },
-  ]);
-  const result = await runClaudeBackend({
-    auth: {},
+test("runClaudeBackend: oauthToken routes to CLAUDE_CODE_OAUTH_TOKEN (apiKey not required)", async () => {
+  const { queryFn, seen } = mockQuery([asResult("")]);
+  await runClaudeBackend({
+    auth: { oauthToken: "oauth-xyz" },
     agent: {
       frontmatter: {
         name: "x",
         description: "",
         trigger: { type: "manual" },
-        model: "claude-sonnet-4-5",
-        tools: [],
-      },
-      systemPrompt: "sys",
-      source: "",
-    },
-    system: "sys",
-    messages: [{ role: "user", content: "what is 2+3?" }],
-    maxSteps: 8,
-    tools: [tool],
-    client,
-  });
-  expect(result.text).toBe("answer is 5");
-  expect(result.toolCalls).toBe(1);
-  expect(seen.calls).toHaveLength(2);
-  // After tool execution the client must receive the tool_result as a user turn.
-  const secondCall = seen.calls[1]!;
-  const lastTurn = secondCall.messages[secondCall.messages.length - 1]!;
-  expect(lastTurn.role).toBe("user");
-  const blocks = lastTurn.content as Array<{ type: string; tool_use_id?: string; content?: string }>;
-  expect(blocks[0]!.type).toBe("tool_result");
-  expect(blocks[0]!.tool_use_id).toBe("toolu_1");
-  expect(blocks[0]!.content).toBe("5");
-});
-
-test("runClaudeBackend: tool execution error surfaces as is_error tool_result", async () => {
-  const tool: ClaudeTool = {
-    name: "fail",
-    description: "always throws",
-    input_schema: { type: "object", properties: {} },
-    execute: async () => {
-      throw new Error("boom");
-    },
-  };
-  const { client, seen } = mockClient([
-    {
-      stop_reason: "tool_use",
-      content: [
-        {
-          type: "tool_use",
-          id: "toolu_err",
-          name: "fail",
-          input: {},
-        } as Anthropic.ToolUseBlock,
-      ],
-    },
-    {
-      stop_reason: "end_turn",
-      content: [{ type: "text", text: "recovered", citations: null } as Anthropic.TextBlock],
-    },
-  ]);
-  const result = await runClaudeBackend({
-    auth: {},
-    agent: {
-      frontmatter: {
-        name: "x",
-        description: "",
-        trigger: { type: "manual" },
-        model: "claude-sonnet-4-5",
+        model: "m",
         tools: [],
       },
       systemPrompt: "",
       source: "",
     },
     system: "",
-    messages: [{ role: "user", content: "try the tool" }],
-    maxSteps: 8,
-    tools: [tool],
-    client,
+    messages: [{ role: "user", content: "" }],
+    maxSteps: 1,
+    queryFn,
   });
-  expect(result.toolCalls).toBe(1);
-  expect(result.text).toBe("recovered");
-  const blocks = seen.calls[1]!.messages[seen.calls[1]!.messages.length - 1]!.content as Array<{
-    is_error?: boolean;
-    content?: string;
-  }>;
-  expect(blocks[0]!.is_error).toBe(true);
-  expect(blocks[0]!.content).toContain("boom");
+  const env = (seen.calls[0]!.options as { env: Record<string, string> }).env;
+  expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe("oauth-xyz");
+  expect(env.ANTHROPIC_API_KEY).toBeUndefined();
 });
 
-test("runClaudeBackend: maxSteps caps the tool-use loop", async () => {
-  const tool: ClaudeTool = {
-    name: "loop",
-    description: "",
-    input_schema: { type: "object", properties: {} },
-    execute: async () => "x",
-  };
-  const forever = Array.from({ length: 10 }, () => ({
-    stop_reason: "tool_use" as const,
-    content: [
-      {
-        type: "tool_use" as const,
-        id: `toolu_${Math.random()}`,
-        name: "loop",
-        input: {},
-      } as Anthropic.ToolUseBlock,
+test("runClaudeBackend: throws when neither apiKey nor oauthToken is set", async () => {
+  await expect(
+    runClaudeBackend({
+      auth: {},
+      agent: {
+        frontmatter: {
+          name: "x",
+          description: "",
+          trigger: { type: "manual" },
+          model: "m",
+          tools: [],
+        },
+        systemPrompt: "",
+        source: "",
+      },
+      system: "",
+      messages: [{ role: "user", content: "" }],
+      maxSteps: 1,
+      queryFn: mockQuery([asResult("")]).queryFn,
+    }),
+  ).rejects.toThrow(/apiKey.*oauthToken/);
+});
+
+test("runClaudeBackend: vault tool → http MCP server with bearer header", async () => {
+  const { queryFn, seen } = mockQuery([asResult("ok")]);
+  await runClaudeBackend({
+    auth: { apiKey: "k" },
+    agent: {
+      frontmatter: {
+        name: "x",
+        description: "",
+        trigger: { type: "manual" },
+        model: "m",
+        tools: ["vault"],
+      },
+      systemPrompt: "",
+      source: "",
+    },
+    system: "",
+    messages: [{ role: "user", content: "" }],
+    vault: { url: "http://vault.example/mcp", token: "vault-token" },
+    maxSteps: 1,
+    queryFn,
+  });
+  const mcp = (seen.calls[0]!.options as { mcpServers: Record<string, unknown> }).mcpServers;
+  expect(mcp.vault).toEqual({
+    type: "http",
+    url: "http://vault.example/mcp",
+    headers: { Authorization: "Bearer vault-token" },
+  });
+});
+
+test("runClaudeBackend: history is folded into the prompt as a transcript", async () => {
+  const { queryFn, seen } = mockQuery([asResult("ok")]);
+  await runClaudeBackend({
+    auth: { apiKey: "k" },
+    agent: {
+      frontmatter: {
+        name: "x",
+        description: "",
+        trigger: { type: "manual" },
+        model: "m",
+        tools: [],
+      },
+      systemPrompt: "",
+      source: "",
+    },
+    system: "",
+    messages: [
+      { role: "user", content: "first" },
+      { role: "assistant", content: "reply" },
+      { role: "user", content: "second" },
     ],
-  }));
-  const { client } = mockClient(forever);
-  const result = await runClaudeBackend({
-    auth: {},
-    agent: {
-      frontmatter: {
-        name: "x",
-        description: "",
-        trigger: { type: "manual" },
-        model: "claude-sonnet-4-5",
-        tools: [],
-      },
-      systemPrompt: "",
-      source: "",
-    },
-    system: "",
-    messages: [{ role: "user", content: "go forever" }],
-    maxSteps: 3,
-    tools: [tool],
-    client,
+    maxSteps: 1,
+    queryFn,
   });
-  expect(result.toolCalls).toBe(3);
+  const prompt = seen.calls[0]!.prompt as string;
+  expect(prompt).toContain("User: first");
+  expect(prompt).toContain("Assistant: reply");
+  expect(prompt).toContain("Current message:\nsecond");
 });
 
-test("AgentRunner: frontmatter backend: claude routes through the Claude path", async () => {
-  let claudeCalls = 0;
-  const { client } = mockClient([
-    {
-      stop_reason: "end_turn",
-      content: [{ type: "text", text: "claude spoke", citations: null } as Anthropic.TextBlock],
-    },
-  ]);
-  // Wrap the client so we can count invocations.
-  const tracked = {
-    messages: {
-      create: async (args: MsgCreateArgs) => {
-        claudeCalls++;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (client.messages as any).create(args);
+test("runClaudeBackend: SDK error result surfaces as thrown error", async () => {
+  const errMsg: SDKMessage = {
+    type: "result",
+    subtype: "error_max_turns",
+    duration_ms: 1,
+    duration_api_ms: 1,
+    is_error: true,
+    num_turns: 99,
+    stop_reason: null,
+    total_cost_usd: 0,
+    usage: {} as never,
+    modelUsage: {},
+    permission_denials: [],
+    errors: ["too many turns"],
+    uuid: "00000000-0000-0000-0000-000000000000",
+    session_id: "s",
+  } as SDKMessage;
+  const { queryFn } = mockQuery([errMsg]);
+  await expect(
+    runClaudeBackend({
+      auth: { apiKey: "k" },
+      agent: {
+        frontmatter: {
+          name: "x",
+          description: "",
+          trigger: { type: "manual" },
+          model: "m",
+          tools: [],
+        },
+        systemPrompt: "",
+        source: "",
       },
-    },
-  } as unknown as Anthropic;
+      system: "",
+      messages: [{ role: "user", content: "" }],
+      maxSteps: 1,
+      queryFn,
+    }),
+  ).rejects.toThrow(/error_max_turns/);
+});
 
+test("AgentRunner: frontmatter backend: claude routes through Claude Agent SDK", async () => {
+  const { queryFn, seen } = mockQuery([asResult("claude spoke")]);
   const runner = new AgentRunner({
     agents: { "echo.md": echoAgent },
     provider: { name: "x", baseURL: "http://x", apiKey: "x" },
     claudeAuth: { apiKey: "test" },
   });
-
   const result = await runner.runAgent(
     "echo-claude",
     { text: "ping" },
-    { anthropicClient: tracked },
+    { claudeQueryFn: queryFn },
   );
   expect(result.text).toBe("claude spoke");
-  expect(claudeCalls).toBe(1);
+  expect(seen.calls).toHaveLength(1);
 });
 
-test("AgentRunner: vercel-ai stays the default and never touches Claude auth", async () => {
+test("AgentRunner: vercel-ai stays default and doesn't require claudeAuth", async () => {
   const vercel = `---
 name: vercel-default
 trigger:
   type: manual
 model: some-model
 ---
-system`;
+sys`;
   const mock = new MockLanguageModelV1({
     doGenerate: async () => ({
       text: "vercel spoke",
@@ -292,7 +280,6 @@ system`;
   const runner = new AgentRunner({
     agents: { "v.md": vercel },
     provider: { name: "x", baseURL: "http://x", apiKey: "x" },
-    // deliberately NO claudeAuth — vercel path shouldn't need it
   });
   const result = await runner.runAgent("vercel-default", { text: "ping" }, { model: mock });
   expect(result.text).toBe("vercel spoke");
@@ -303,7 +290,5 @@ test("AgentRunner: claude backend without claudeAuth raises a clear error", asyn
     agents: { "echo.md": echoAgent },
     provider: { name: "x", baseURL: "http://x", apiKey: "x" },
   });
-  await expect(runner.runAgent("echo-claude", { text: "ping" })).rejects.toThrow(
-    /claudeAuth/,
-  );
+  await expect(runner.runAgent("echo-claude", { text: "ping" })).rejects.toThrow(/claudeAuth/);
 });
