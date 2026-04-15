@@ -7,6 +7,7 @@ import {
   appendTurns,
   type ConversationStore,
 } from "./conversation-store.js";
+import type { Scheduler } from "./scheduler.js";
 
 export interface ParachuteAgentConfig {
   /** Map of agent file path → raw markdown contents. Usually wired via wrangler text-loader imports or the filesystem loader. */
@@ -23,6 +24,8 @@ export interface ParachuteAgentConfig {
   tools?: Record<string, Tool>;
   /** Conversation memory backing. Defaults to an in-process {@link MemoryConversationStore}. */
   conversationStore?: ConversationStore;
+  /** If set, agents with `trigger.type: cron` auto-register on construction. */
+  scheduler?: Scheduler;
 }
 
 export interface AgentRunInput {
@@ -87,6 +90,17 @@ export class AgentRunner {
       return wildcardRank(a) - wildcardRank(b);
     });
     this._conversationStore = config.conversationStore ?? new MemoryConversationStore();
+
+    if (config.scheduler) {
+      for (const agent of this._agents.values()) {
+        const trigger = agent.frontmatter.trigger;
+        if (trigger.type !== "cron") continue;
+        const name = agent.frontmatter.name;
+        config.scheduler.schedule(name, trigger.schedule, async () => {
+          await this.runAgent(name, { text: "" });
+        });
+      }
+    }
   }
 
   agents(): Map<string, AgentDefinition> {

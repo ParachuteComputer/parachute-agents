@@ -14,6 +14,7 @@ export type {
 } from "./runner.js";
 export { MemoryConversationStore } from "./conversation-store.js";
 export type { ConversationStore, ConversationTurn } from "./conversation-store.js";
+export type { Scheduler } from "./scheduler.js";
 export { Vault } from "./vault.js";
 export type { VaultConfig } from "./vault.js";
 export {

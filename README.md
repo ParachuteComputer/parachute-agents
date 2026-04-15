@@ -71,6 +71,21 @@ const runner = new AgentRunner({
 });
 ```
 
+### Cron triggers
+
+Agents with `trigger.type: cron` register on the configured scheduler when the runner starts. Self-hosted defaults to a [croner](https://github.com/Hexagon/croner)-backed `NodeCronScheduler` (wired automatically by `startSelfHosted`); pass your own `Scheduler` on the config to use a different backend. Cloudflare Workers cron (via `wrangler.toml` triggers + the DO `alarm()` method) is a follow-up PR.
+
+```yaml
+---
+name: daily-digest
+trigger:
+  type: cron
+  schedule: "0 9 * * *"   # 5- or 6-field cron, UTC by default
+model: nvidia/nemotron-3-super-120b-a12b
+tools: [vault]
+---
+```
+
 ## The shape (sketch)
 
 ```
