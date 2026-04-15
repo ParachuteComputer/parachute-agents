@@ -59,7 +59,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^0.2.0",
-    "@anthropic-ai/sdk": "^0.89.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.109",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "agents": "^0.0.80",
     "ai": "^4.0.0",

@@ -26,16 +26,21 @@ export type {
 export { Vault } from "./vault.js";
 export type { VaultConfig } from "./vault.js";
 export {
-  loadAgents,
+  parseAgents,
   parseAgent,
   matchesWebhook,
   agentFrontmatterSchema,
 } from "./agents.js";
 export type { AgentDefinition, AgentFrontmatter, VaultTrigger, ToolEntry, Backend } from "./agents.js";
-export { loadAgentsFromVault, loadAgentsInline } from "./agent-sources.js";
-export type { LoadAgentsFromVaultOptions } from "./agent-sources.js";
-export { runClaudeBackend, buildClaudeTools, buildAnthropicClient } from "./backends/claude.js";
-export type { ClaudeAuth, ClaudeTool, ClaudeBackendRunArgs, ClaudeBackendRunResult } from "./backends/claude.js";
+export { loadAgents, loadAgentsFromVault, loadAgentsInline } from "./agent-sources.js";
+export type { AgentSource, LoadAgentsFromVaultOptions } from "./agent-sources.js";
+export { runClaudeBackend } from "./backends/claude.js";
+export type {
+  ClaudeAuth,
+  ClaudeBackendRunArgs,
+  ClaudeBackendRunResult,
+  ClaudeQueryFn,
+} from "./backends/claude.js";
 export { MemoryCursorStore } from "./cursor-store.js";
 export type { CursorStore } from "./cursor-store.js";
 export { VaultWatcher, createVaultQueryFn } from "./vault-watcher.js";

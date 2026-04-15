@@ -95,8 +95,9 @@ export function isMcpToolEntry(entry: ToolEntry): entry is McpToolEntry {
 /**
  * Which inference backend executes the agent loop. `vercel-ai` is the default
  * and uses the OpenAI-compatible provider from `ParachuteAgentConfig.provider`.
- * `claude` uses the Anthropic Messages API via `@anthropic-ai/sdk` and picks up
- * auth from `ParachuteAgentConfig.claudeAuth`.
+ * `claude` delegates to `@anthropic-ai/claude-agent-sdk` — the same runtime
+ * `claude` CLI uses — and picks up auth (API key or Claude Max OAuth token)
+ * from `ParachuteAgentConfig.claudeAuth`.
  */
 export const backendSchema = z.enum(["vercel-ai", "claude"]);
 export type Backend = z.infer<typeof backendSchema>;
@@ -149,7 +150,7 @@ export function parseAgent(source: string): AgentDefinition {
   };
 }
 
-export function loadAgents(
+export function parseAgents(
   sources: Record<string, string>,
 ): Map<string, AgentDefinition> {
   const agents = new Map<string, AgentDefinition>();

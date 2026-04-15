@@ -2,19 +2,14 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText, type CoreMessage, type LanguageModel, type Tool } from "ai";
 import {
   isMcpToolEntry,
-  loadAgents,
+  parseAgents,
   matchesWebhook,
   type AgentDefinition,
   type Backend,
 } from "./agents.js";
 import { Vault, type VaultConfig } from "./vault.js";
 import { createMcpClient, type McpClient } from "./mcp/connector.js";
-import {
-  buildClaudeTools,
-  runClaudeBackend,
-  type ClaudeAuth,
-  type ClaudeBackendToolOptions,
-} from "./backends/claude.js";
+import { runClaudeBackend, type ClaudeAuth } from "./backends/claude.js";
 import {
   MemoryConversationStore,
   appendTurns,
@@ -104,10 +99,11 @@ export interface AgentRunOptions {
   /** Override the Claude model ID for this call. Only honored by the Claude backend. */
   claudeModel?: string;
   /**
-   * Inject a pre-built Anthropic client — for tests that want to avoid the
-   * network. Production callers should use `config.claudeAuth` instead.
+   * Inject a Claude Agent SDK `query()` replacement — for tests that want to
+   * avoid spawning the real Claude Code subprocess. Production callers should
+   * use `config.claudeAuth` instead.
    */
-  anthropicClient?: import("@anthropic-ai/sdk").default;
+  claudeQueryFn?: import("./backends/claude.js").ClaudeQueryFn;
   /** What invoked this run. Defaults to `"manual"` — webhook/cron paths stamp the appropriate value. */
   trigger?: RunTrigger;
 }
@@ -144,7 +140,7 @@ export class AgentRunner {
   private _vaultWatcher: VaultWatcher | null = null;
 
   constructor(private readonly config: ParachuteAgentConfig) {
-    this._agents = loadAgents(config.agents);
+    this._agents = parseAgents(config.agents);
     this._webhookOrder = [...this._agents.values()].sort((a, b) => {
       // Catch-alls (webhook trigger with match: always) run last so specific
       // matchers like `contains_url` claim their messages first. Array.sort is
@@ -364,27 +360,18 @@ export class AgentRunner {
         `agent "${agent.frontmatter.name}" uses backend: claude but config.claudeAuth is unset`,
       );
     }
-    const toolOptions: ClaudeBackendToolOptions = {
+    return runClaudeBackend({
+      auth: this.config.claudeAuth,
+      agent,
+      model: options.claudeModel,
+      system: agent.systemPrompt,
+      messages: [
+        ...history.map((t) => ({ role: t.role, content: t.content })),
+        { role: "user" as const, content: text },
+      ],
       vault: this.config.vault,
-    };
-    const bundle = await buildClaudeTools(agent, toolOptions);
-    try {
-      const result = await runClaudeBackend({
-        auth: this.config.claudeAuth,
-        agent,
-        model: options.claudeModel,
-        system: agent.systemPrompt,
-        messages: [
-          ...history.map((t) => ({ role: t.role, content: t.content })),
-          { role: "user" as const, content: text },
-        ],
-        tools: bundle.tools,
-        maxSteps: 8,
-        client: options.anthropicClient,
-      });
-      return result;
-    } finally {
-      await bundle.close();
-    }
+      maxSteps: 8,
+      queryFn: options.claudeQueryFn,
+    });
   }
 }

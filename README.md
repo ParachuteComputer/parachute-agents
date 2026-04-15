@@ -58,7 +58,9 @@ my-agent/
 
 ### Backends
 
-By default the runner drives inference through the **Vercel AI SDK** (`generateText`) against any OpenAI-compatible provider. Each agent can opt into a native **Claude** backend by setting `backend: claude` in its frontmatter — useful when you want to drive Anthropic's Messages API directly (tool-use loop, Claude-specific features) instead of going through the AI-SDK abstraction. You can also flip the default for every agent via `backend: "claude"` on the runner config.
+By default the runner drives inference through the **Vercel AI SDK** (`generateText`) against any OpenAI-compatible provider. Each agent can opt into the **Claude Agent SDK** backend by setting `backend: claude` in its frontmatter. You can also flip the default for every agent via `backend: "claude"` on the runner config.
+
+The Claude backend delegates to [`@anthropic-ai/claude-agent-sdk`](https://docs.anthropic.com/en/api/agent-sdk/overview) — the same runtime `claude` CLI uses — so it transparently supports both direct API keys and **OAuth tokens from a Claude Max subscription**. `claudeAuth` accepts either (or both — the SDK picks up whichever is set):
 
 ```ts
 import { AgentRunner } from "@openparachute/agent";
@@ -67,8 +69,11 @@ const runner = new AgentRunner({
   agents,
   // vercel-ai backend (default) — configure an OpenAI-compatible provider:
   provider: { name: "openrouter", baseURL: "https://openrouter.ai/api/v1", apiKey: process.env.OPENROUTER_KEY! },
-  // claude backend — required only when at least one agent resolves to backend: "claude"
-  claudeAuth: { apiKey: process.env.ANTHROPIC_API_KEY! },
+  // claude backend — required only when at least one agent resolves to backend: "claude":
+  claudeAuth: {
+    apiKey:     process.env.ANTHROPIC_API_KEY,         // standard direct-API path
+    oauthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,   // Claude Max subscription path
+  },
 });
 ```
 
@@ -82,27 +87,38 @@ tools: [vault]
 ---
 ```
 
-Both backends share the same MCP tool pipeline — `vault` and `mcp:` entries work identically. Claude-only configs can omit `provider` entirely.
+Internally the backend projects `tools: [vault, mcp: …]` into the SDK's `mcpServers` map, so both backends share the same MCP pipeline — `vault` and `mcp:` entries work identically either way. Claude-only configs can omit `provider` entirely. Claude Code's built-in tools (Read/Write/Bash/…) are disabled; only the MCP servers you wire up are available to the model.
+
+> **OAuth token retrieval:** today you supply `oauthToken` explicitly (the same value `claude` stores after `claude login`). Reading it from the Claude Code keychain automatically is future work — rotation + T&Cs need to be resolved upstream first.
 
 ### Agent sources
 
-The `agents` map is just `{ path → markdown }`, so you can build it however you want. Three helpers cover the common cases:
-
-- **Inline** (`loadAgentsInline`) — hand-authored map, useful for tests or tiny deployments.
-- **Filesystem** (`loadAgentsFromDir` in `@openparachute/agent/adapters/node`) — walks a directory of `.md` files.
-- **Vault** (`loadAgentsFromVault`) — queries a Parachute Vault for notes tagged `agent-definition` (override with `tag:`). Each note's body becomes an agent. One-shot snapshot; re-run the loader (or restart the runner) to pick up vault changes.
+The `agents` map is just `{ path → markdown }`. Build it however you want, or use the unified loader — a tagged-union `AgentSource` that picks storage at the edge:
 
 ```ts
-import { AgentRunner, loadAgentsFromVault } from "@openparachute/agent";
+import { AgentRunner, loadAgents } from "@openparachute/agent";
 
-const agents = await loadAgentsFromVault({
+// inline — hand-authored map
+const a = await loadAgents({ type: "inline", agents: { "echo.md": "---\nname: echo\n---\nbody" } });
+
+// filesystem — recursively walks *.md
+const b = await loadAgents({ type: "dir", path: "./agents" });
+
+// parachute vault — each note tagged `agent-definition` is one agent
+const c = await loadAgents({
+  type: "vault",
   vault: { url, token },
   tag: "agent-definition", // default
 });
-const runner = new AgentRunner({ agents, vault: { url, token }, provider });
+
+const runner = new AgentRunner({ agents: c, vault: { url, token }, provider });
 ```
 
-If the vault is unreachable at boot, `loadAgentsFromVault` logs a warning and returns `{}` — the runner boots with zero agents rather than crashing on a transient blip.
+This "tagged-union loader" shape is a **Parachute ecosystem convention** — scribe, narrate, daily and friends expose the same `load*({source})` signature. Switching storage backends is a one-line config change; the runner stays immutable after construction.
+
+The vault variant is a one-shot snapshot — re-call `loadAgents({...})` to pick up vault changes. If the vault is unreachable at load time, it logs a warning and returns `{}` so a transient blip doesn't crash boot.
+
+The legacy `loadAgentsFromDir` / `loadAgentsFromVault` / `loadAgentsInline` exports remain as thin deprecated wrappers around `loadAgents({...})`. Prefer the unified form.
 
 ### Conversation memory
 
