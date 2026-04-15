@@ -3,7 +3,7 @@
  * entry exports only the interface — concrete implementations live behind
  * subpath exports so Cloudflare bundles don't pull in node-only deps.
  *
- * See `@openparachute/agents/scheduler-node` for the croner-backed
+ * See `@openparachute/agent/scheduler-node` for the croner-backed
  * implementation used by Bun/Node self-hosted deployments. The Cloudflare
  * Workers cron story goes through `wrangler.toml` triggers + the DO
  * `alarm()` method and will ship with its own wrapper.

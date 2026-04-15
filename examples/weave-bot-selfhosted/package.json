@@ -8,7 +8,7 @@
     "dev": "bun run src/index.ts"
   },
   "dependencies": {
-    "@openparachute/agents": "file:../.."
+    "@openparachute/agent": "file:../.."
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",

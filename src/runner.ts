@@ -79,7 +79,7 @@ function resolveText(input: AgentRunInput): string {
  * Stateless runner: loads agent definitions, matches triggers, runs the AI SDK loop.
  * Runtime-agnostic — works in CF Workers, Bun, Node, any JS runtime with `fetch`.
  *
- * For the Cloudflare Durable Object wrapper, see `@openparachute/agents/cloudflare`.
+ * For the Cloudflare Durable Object wrapper, see `@openparachute/agent/cloudflare`.
  */
 function wildcardRank(agent: AgentDefinition): number {
   const t = agent.frontmatter.trigger;
