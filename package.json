@@ -33,6 +33,10 @@
     "./scheduler-node": {
       "types": "./dist/scheduler-node.d.ts",
       "import": "./dist/scheduler-node.js"
+    },
+    "./run-log-sqlite": {
+      "types": "./dist/run-log-sqlite.d.ts",
+      "import": "./dist/run-log-sqlite.js"
     }
   },
   "files": ["dist", "src"],

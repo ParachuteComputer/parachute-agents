@@ -36,7 +36,7 @@ export async function handleWebhook(
   const result = await runner.runAgent(
     agent.frontmatter.name,
     { text: payload.text, source: payload.source, meta: payload.meta },
-    { conversationId },
+    { conversationId, trigger: "webhook" },
   );
   return Response.json(result);
 }
@@ -70,7 +70,7 @@ export async function handleConnectorWebhook<Config>(
       source: msg.platform,
       meta: { sender: msg.sender, channelId: msg.channelId, meta: msg.meta },
     },
-    { conversationId: `${msg.platform}:${msg.channelId}` },
+    { conversationId: `${msg.platform}:${msg.channelId}`, trigger: "webhook" },
   );
 
   if (opts.autoReply && result.text) {

@@ -173,3 +173,60 @@ test("runner without scheduler: cron agents load but don't register", () => {
   expect(calls).toHaveLength(0);
   void scheduler;
 });
+
+test("successful run is recorded with output and no error", async () => {
+  const capture = { calls: [] as LanguageModelV1CallOptions[] };
+  const r = new AgentRunner({
+    agents: { "general.md": generalChat },
+    provider: { name: "x", baseURL: "http://x", apiKey: "x" },
+  });
+  await r.runAgent("general-chat", { text: "hi" }, { model: makeMock(capture, "hello back") });
+  const runs = await r.runs({});
+  expect(runs).toHaveLength(1);
+  expect(runs[0]!.output).toBe("hello back");
+  expect(runs[0]!.error).toBeNull();
+  expect(runs[0]!.agentName).toBe("general-chat");
+  expect(runs[0]!.trigger).toBe("manual");
+  expect(runs[0]!.durationMs).toBeGreaterThanOrEqual(0);
+});
+
+test("failing run is still recorded with error set and output null", async () => {
+  const r = new AgentRunner({
+    agents: { "general.md": generalChat },
+    provider: { name: "x", baseURL: "http://x", apiKey: "x" },
+  });
+  const exploding = new MockLanguageModelV1({
+    doGenerate: async () => {
+      throw new Error("boom");
+    },
+  });
+  await expect(
+    r.runAgent("general-chat", { text: "hi" }, { model: exploding }),
+  ).rejects.toThrow("boom");
+  const runs = await r.runs({});
+  expect(runs).toHaveLength(1);
+  expect(runs[0]!.output).toBeNull();
+  expect(runs[0]!.error).toBe("boom");
+  expect(runs[0]!.trigger).toBe("manual");
+});
+
+test("trigger option is stamped on the recorded run", async () => {
+  const capture = { calls: [] as LanguageModelV1CallOptions[] };
+  const r = new AgentRunner({
+    agents: { "general.md": generalChat },
+    provider: { name: "x", baseURL: "http://x", apiKey: "x" },
+  });
+  await r.runAgent(
+    "general-chat",
+    { text: "hi" },
+    { model: makeMock(capture, "a"), trigger: "webhook" },
+  );
+  await r.runAgent(
+    "general-chat",
+    { text: "hi" },
+    { model: makeMock(capture, "b"), trigger: "cron" },
+  );
+  const runs = await r.runs({});
+  expect(runs).toHaveLength(2);
+  expect(runs.map((x) => x.trigger).sort()).toEqual(["cron", "webhook"]);
+});
