@@ -25,6 +25,10 @@
     "./connectors": {
       "types": "./dist/connectors/index.d.ts",
       "import": "./dist/connectors/index.js"
+    },
+    "./sqlite": {
+      "types": "./dist/conversation-store-sqlite.d.ts",
+      "import": "./dist/conversation-store-sqlite.js"
     }
   },
   "files": ["dist", "src"],

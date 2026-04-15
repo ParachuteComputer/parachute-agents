@@ -1,7 +1,11 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { generateText, type LanguageModel, type Tool } from "ai";
+import { generateText, type CoreMessage, type LanguageModel, type Tool } from "ai";
 import { loadAgents, matchesWebhook, type AgentDefinition } from "./agents.js";
 import { Vault, type VaultConfig } from "./vault.js";
+import {
+  MemoryConversationStore,
+  type ConversationStore,
+} from "./conversation-store.js";
 
 export interface ParachuteAgentConfig {
   /** Map of agent file path → raw markdown contents. Usually wired via wrangler text-loader imports or the filesystem loader. */
@@ -16,11 +20,23 @@ export interface ParachuteAgentConfig {
   };
   /** Extra tools the host wants to expose to agents (e.g. `fetch_url`). */
   tools?: Record<string, Tool>;
+  /** Conversation memory backing. Defaults to an in-process {@link MemoryConversationStore}. */
+  conversationStore?: ConversationStore;
+  /** Test-only: override the language model so runAgent doesn't hit the network. */
+  providerOverride?: (modelId: string) => LanguageModel;
 }
 
 export interface AgentRunInput {
-  user: string;
-  context?: Record<string, unknown>;
+  text: string;
+  source?: string;
+  meta?: unknown;
+}
+
+export interface AgentRunOptions {
+  /** Thread replies by conversation. When set, prior turns are loaded from the store and the user/assistant pair is appended after the response. */
+  conversationId?: string;
+  /** How many prior turns to include. Defaults to 20. */
+  historyLimit?: number;
 }
 
 export interface AgentRunResult {
@@ -44,6 +60,7 @@ export class AgentRunner {
   private _agents: Map<string, AgentDefinition>;
   /** Agents in webhook-match priority order: specific matchers before `match: always` catch-alls. */
   private _webhookOrder: AgentDefinition[];
+  private _conversationStore: ConversationStore;
 
   constructor(private readonly config: ParachuteAgentConfig) {
     this._agents = loadAgents(config.agents);
@@ -53,10 +70,15 @@ export class AgentRunner {
       // stable in modern JS, so same-tier agents keep their load order.
       return wildcardRank(a) - wildcardRank(b);
     });
+    this._conversationStore = config.conversationStore ?? new MemoryConversationStore();
   }
 
   agents(): Map<string, AgentDefinition> {
     return this._agents;
+  }
+
+  conversationStore(): ConversationStore {
+    return this._conversationStore;
   }
 
   /** First matching agent in load order wins; within the same priority tier, load order decides. `match: always` agents are ranked last so specific matchers claim their messages first. */
@@ -67,29 +89,59 @@ export class AgentRunner {
     return undefined;
   }
 
-  async runAgent(name: string, input: AgentRunInput): Promise<AgentRunResult> {
+  async runAgent(
+    name: string,
+    input: AgentRunInput,
+    options: AgentRunOptions = {},
+  ): Promise<AgentRunResult> {
     const agent = this._agents.get(name);
     if (!agent) throw new Error(`unknown agent: ${name}`);
 
-    const provider = createOpenAICompatible({
-      name: this.config.provider.name,
-      baseURL: this.config.provider.baseURL,
-      apiKey: this.config.provider.apiKey,
-    });
-    const model: LanguageModel = provider(agent.frontmatter.model);
+    const model: LanguageModel = this.config.providerOverride
+      ? this.config.providerOverride(agent.frontmatter.model)
+      : createOpenAICompatible({
+          name: this.config.provider.name,
+          baseURL: this.config.provider.baseURL,
+          apiKey: this.config.provider.apiKey,
+        })(agent.frontmatter.model);
 
     const tools: Record<string, Tool> = { ...(this.config.tools ?? {}) };
     if (agent.frontmatter.tools.includes("vault") && this.config.vault) {
       Object.assign(tools, await new Vault(this.config.vault).tools());
     }
 
+    const conversationId = options.conversationId;
+    const historyLimit = options.historyLimit ?? 20;
+    const history = conversationId
+      ? await this._conversationStore.history(conversationId, historyLimit)
+      : [];
+
+    const messages: CoreMessage[] = [
+      ...history.map((t) => ({ role: t.role, content: t.content }) as CoreMessage),
+      { role: "user", content: input.text },
+    ];
+
     const result = await generateText({
       model,
       system: agent.systemPrompt,
-      prompt: input.user,
+      messages,
       tools,
       maxSteps: 8,
     });
+
+    if (conversationId) {
+      const now = Date.now();
+      await this._conversationStore.append(conversationId, {
+        role: "user",
+        content: input.text,
+        ts: now,
+      });
+      await this._conversationStore.append(conversationId, {
+        role: "assistant",
+        content: result.text,
+        ts: now + 1,
+      });
+    }
 
     return {
       text: result.text,

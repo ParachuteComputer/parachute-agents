@@ -56,6 +56,10 @@ my-agent/
 
 `examples/weave-bot-selfhosted/` is the reference. Run with `bun src/index.ts`.
 
+### Conversation memory
+
+Chat agents get threaded history automatically, scoped per `(source, chat_id)` — so a Telegram thread feels like a continuing conversation instead of a series of amnesiac replies. The default store is in-process (`MemoryConversationStore`); swap in `SqliteConversationStore` from `@openparachute/agents/sqlite` for a Bun-backed file, or pass your own `ConversationStore` implementation via `conversationStore` in the runner config. Generic `/webhook` callers can opt in per-request by passing `meta.conversation_id`.
+
 ## The shape (sketch)
 
 ```
