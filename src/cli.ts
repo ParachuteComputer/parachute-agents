@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { Database } from "bun:sqlite";
 import { loadAgentsFromDir } from "./adapters/node.js";
-import { parseAgent } from "./agents.js";
+import { parseAgent, type ToolEntry } from "./agents.js";
 import { SqliteRunLog } from "./run-log-sqlite.js";
 import type { AgentRun } from "./run-log.js";
 
@@ -105,7 +105,7 @@ function triggerSummary(fm: { trigger: { type: string; [k: string]: unknown } })
   return t.type;
 }
 
-function toolsSummary(tools: Array<string | { mcp: { name: string; auth: { type: string } } }>): string {
+function toolsSummary(tools: ToolEntry[]): string {
   if (tools.length === 0) return "-";
   return tools
     .map((t) => (typeof t === "string" ? t : `mcp:${t.mcp.name}(${t.mcp.auth.type})`))

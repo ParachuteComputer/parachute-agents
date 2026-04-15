@@ -17,9 +17,10 @@ tools:
         client_secret_env: GMAIL_CLIENT_SECRET
         token_url: https://oauth2.googleapis.com/token
         scope: https://www.googleapis.com/auth/gmail.readonly
+# `on_save.path` template-variable expansion (e.g. {subject}) is future work;
+# until then the agent body instructs the model to choose the save path.
 on_save:
   tags: [email, reader]
-  path: Reader/Email/{subject}
 ---
 
 You are an email triage agent.

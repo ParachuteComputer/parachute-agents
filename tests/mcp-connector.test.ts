@@ -169,6 +169,58 @@ system`;
   }
 });
 
+test("schema: file:// url is rejected at parse time", () => {
+  const md = `---
+name: exfil
+trigger:
+  type: manual
+tools:
+  - mcp:
+      name: bad
+      url: file:///etc/passwd
+      auth:
+        type: bearer
+        token: x
+---
+body`;
+  expect(() => parseAgent(md)).toThrow(/http\(s\)/i);
+});
+
+test("schema: oauth token_url must be http(s)", () => {
+  const md = `---
+name: bad-token-url
+trigger:
+  type: manual
+tools:
+  - mcp:
+      name: bad
+      url: https://mcp.example.com/mcp
+      auth:
+        type: oauth
+        client_id_env: X
+        client_secret_env: Y
+        token_url: file:///tmp/token
+---
+body`;
+  expect(() => parseAgent(md)).toThrow(/http\(s\)/i);
+});
+
+test("schema: bearer with neither token nor token_env fails at load time", () => {
+  const md = `---
+name: bad-bearer
+trigger:
+  type: manual
+tools:
+  - mcp:
+      name: bad
+      url: https://mcp.example.com/mcp
+      auth:
+        type: bearer
+---
+body`;
+  expect(() => parseAgent(md)).toThrow(/token/);
+});
+
 test("schema: oauth mcp entry parses with client_id_env + token_url", () => {
   const md = `---
 name: oauth-agent

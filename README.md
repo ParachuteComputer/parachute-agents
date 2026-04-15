@@ -105,6 +105,8 @@ tools:
         token_env: GMAIL_TOKEN
 ```
 
+Prefer `token_env` over inline `token:` in production — agent markdown files are usually version-controlled, and an inline token would end up in git history. Inline `token:` is supported only as a test/dev convenience.
+
 Auth is either `bearer` (static token, inline or from env) or `oauth` (RFC 6749 `client_credentials` grant, with module-level token cache):
 
 ```yaml

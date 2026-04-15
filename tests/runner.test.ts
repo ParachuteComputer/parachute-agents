@@ -330,6 +330,30 @@ test("runAgent: mcp client is closed even when generateText throws", async () =>
   expect(closed).toBe(1);
 });
 
+test("runAgent: a throwing mcp close() doesn't crash the run", async () => {
+  const capture = { calls: [] as LanguageModelV1CallOptions[] };
+  const r = new AgentRunner({
+    agents: { "mcp.md": mcpAgent },
+    provider: { name: "x", baseURL: "http://x", apiKey: "x" },
+    createMcpClient: async () => ({
+      tools: async () => ({}),
+      close: async () => {
+        throw new Error("close blew up");
+      },
+    }),
+  });
+  const result = await r.runAgent(
+    "mcp-agent",
+    { text: "hi" },
+    { model: makeMock(capture, "fine") },
+  );
+  expect(result.text).toBe("fine");
+  const runs = await r.runs({});
+  expect(runs).toHaveLength(1);
+  expect(runs[0]!.output).toBe("fine");
+  expect(runs[0]!.error).toBeNull();
+});
+
 test("trigger option is stamped on the recorded run", async () => {
   const capture = { calls: [] as LanguageModelV1CallOptions[] };
   const r = new AgentRunner({

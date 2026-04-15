@@ -31,25 +31,40 @@ const manualTrigger = z.object({ type: z.literal("manual") });
  * Deliberately minimal — PKCE / authorization_code / refresh_token flows are
  * out of scope until an agent actually needs one.
  */
-const mcpBearerAuth = z.object({
-  type: z.literal("bearer"),
-  token: z.string().optional(),
-  token_env: z.string().optional(),
-});
+// Reject non-http(s) URLs at parse time so an agent file can't smuggle
+// `file:///etc/passwd` or similar into the MCP transport / token endpoint.
+const httpUrl = z
+  .string()
+  .url()
+  .refine((u) => /^https?:\/\//i.test(u), {
+    message: "must be an http(s) URL",
+  });
+
+const mcpBearerAuth = z
+  .object({
+    type: z.literal("bearer"),
+    token: z.string().optional(),
+    token_env: z.string().optional(),
+  })
+  .refine((v) => Boolean(v.token || v.token_env), {
+    message: "bearer auth requires either `token` or `token_env`",
+  });
 
 const mcpOauthAuth = z.object({
   type: z.literal("oauth"),
   client_id_env: z.string(),
   client_secret_env: z.string(),
-  token_url: z.string().url(),
+  token_url: httpUrl,
   scope: z.string().optional(),
 });
 
-const mcpAuth = z.discriminatedUnion("type", [mcpBearerAuth, mcpOauthAuth]);
+// Plain union (not discriminatedUnion) because bearer is wrapped in a
+// ZodEffects via `.refine`, which discriminatedUnion can't accept.
+const mcpAuth = z.union([mcpBearerAuth, mcpOauthAuth]);
 
 const mcpServerConfigSchema = z.object({
   name: z.string(),
-  url: z.string().url(),
+  url: httpUrl,
   auth: mcpAuth,
 });
 
