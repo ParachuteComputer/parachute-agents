@@ -1,4 +1,6 @@
 import { AgentRunner, handleWebhook } from "@openparachute/agents";
+// Note: if you want the Durable Object wrapper (ParachuteAgent), import it from
+// "@openparachute/agents/cloudflare" instead — only safe to import from Workers code.
 import extractEvent from "../agents/extract-event.md";
 
 interface Env {

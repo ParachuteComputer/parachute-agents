@@ -21,6 +21,16 @@ The result: a Discord bot that watches a channel for URLs, extracts event detail
 
 A `@openparachute/agents` app is one runtime wrapper, one folder of markdown agents, and one vault. New features are new markdown files. Storage is the vault — no Grist, no SQLite-per-platform, no callback dance.
 
+## Which import do I use?
+
+| Runtime | Import from | What you get |
+|---|---|---|
+| Bun / Node / any JS w/ fetch | `@openparachute/agents` | `AgentRunner`, vault, connectors, handlers — runtime-agnostic |
+| Cloudflare Workers (stateful DO) | `@openparachute/agents/cloudflare` | `ParachuteAgent` (extends CF `Agent<Env, State>`) |
+| Bun HTTP adapter | `@openparachute/agents/adapters/node` | `serveBun`, `loadAgentsFromDir`, `startSelfHosted` |
+
+The Cloudflare entry pulls `partyserver` (needs `cloudflare:workers` virtual module) — only import it from Worker code. The base entry is safe everywhere.
+
 ## Two deployment modes
 
 Pick whichever suits the app — **the agent markdown is identical**, only the runtime wrapper differs.

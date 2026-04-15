@@ -1,4 +1,4 @@
-import type { AgentRunner } from "../ParachuteAgent.js";
+import type { AgentRunner } from "../runner.js";
 import type { Connector, IncomingMessage } from "../connectors/types.js";
 
 export interface WebhookPayload {

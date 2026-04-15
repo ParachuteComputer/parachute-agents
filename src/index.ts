@@ -1,9 +1,16 @@
-export { ParachuteAgent, AgentRunner } from "./ParachuteAgent.js";
+/**
+ * Runtime-agnostic entry point. Safe to import from any JS runtime with `fetch`.
+ *
+ * For the Cloudflare Durable Object wrapper (`ParachuteAgent`), import from
+ * `@openparachute/agents/cloudflare` instead — that entry pulls in `partyserver`,
+ * which requires the `cloudflare:workers` virtual module only present in Workers.
+ */
+export { AgentRunner } from "./runner.js";
 export type {
   ParachuteAgentConfig,
   AgentRunInput,
   AgentRunResult,
-} from "./ParachuteAgent.js";
+} from "./runner.js";
 export { Vault } from "./vault.js";
 export type { VaultConfig } from "./vault.js";
 export {

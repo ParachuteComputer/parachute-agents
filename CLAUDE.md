@@ -17,14 +17,21 @@ Bespoke agent stacks like `weave-bot-orb` (Python + FastAPI + Playwright + Grist
 
 ```
 src/
-├── ParachuteAgent.ts      # AgentRunner (stateless) + ParachuteAgent (DO wrapper)
-├── agents.ts              # agent loader: frontmatter + body → registered handler
+├── index.ts               # runtime-agnostic entry — safe in Bun/Node/CF
+├── cloudflare.ts          # CF-only entry — ParachuteAgent DO wrapper
+├── runner.ts              # AgentRunner (stateless, runs the AI SDK loop)
+├── agents.ts              # agent loader: frontmatter + body → definition
 ├── vault.ts               # MCP client for the configured Parachute Vault
 ├── connectors/            # Telegram / Discord / Slack (soon) webhook + reply
 ├── adapters/node.ts       # Bun HTTP server + filesystem agent loader
 └── triggers/
     └── webhook.ts         # generic + connector-driven webhook → match → fire
 ```
+
+**Entry-point discipline:** `src/cloudflare.ts` pulls in `partyserver` (needs the
+`cloudflare:workers` virtual module), so it must never be imported from the base
+entry. Self-hosted runtimes import from `@openparachute/agents`; CF Workers import
+`ParachuteAgent` from `@openparachute/agents/cloudflare`.
 
 ## Agent schema (sketch)
 

@@ -1,4 +1,3 @@
-import { Agent } from "agents";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText, type LanguageModel, type Tool } from "ai";
 import { loadAgents, matchesWebhook, type AgentDefinition } from "./agents.js";
@@ -32,7 +31,9 @@ export interface AgentRunResult {
 
 /**
  * Stateless runner: loads agent definitions, matches triggers, runs the AI SDK loop.
- * Usable inside a Durable Object (via {@link ParachuteAgent}) or standalone.
+ * Runtime-agnostic — works in CF Workers, Bun, Node, any JS runtime with `fetch`.
+ *
+ * For the Cloudflare Durable Object wrapper, see `@openparachute/agents/cloudflare`.
  */
 export class AgentRunner {
   private _agents: Map<string, AgentDefinition>;
@@ -81,35 +82,5 @@ export class AgentRunner {
       agent: agent.frontmatter.name,
       toolCalls: result.toolCalls?.length ?? 0,
     };
-  }
-}
-
-/**
- * Base class for a stateful Parachute agent running as a Cloudflare Durable Object.
- * Extend in your Worker, override {@link configure}, register in wrangler.toml.
- *
- * For stateless use (no per-agent SQLite, no hibernation), use {@link AgentRunner} directly.
- */
-export class ParachuteAgent<Env = unknown, State = Record<string, unknown>> extends Agent<
-  Env,
-  State
-> {
-  private _runner?: AgentRunner;
-
-  configure(): ParachuteAgentConfig {
-    throw new Error("ParachuteAgent: override configure() in your subclass");
-  }
-
-  protected runner(): AgentRunner {
-    if (!this._runner) this._runner = new AgentRunner(this.configure());
-    return this._runner;
-  }
-
-  matchWebhook(payload: { text?: string; source?: string }) {
-    return this.runner().matchWebhook(payload);
-  }
-
-  runAgent(name: string, input: AgentRunInput) {
-    return this.runner().runAgent(name, input);
   }
 }

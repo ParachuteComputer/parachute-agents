@@ -1,6 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join } from "node:path";
-import { AgentRunner, type ParachuteAgentConfig } from "../ParachuteAgent.js";
+import { AgentRunner, type ParachuteAgentConfig } from "../runner.js";
 import { handleWebhook, handleConnectorWebhook } from "../triggers/webhook.js";
 import type { Connector } from "../connectors/types.js";
 
