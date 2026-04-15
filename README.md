@@ -90,6 +90,36 @@ tools: [vault]
 ---
 ```
 
+### MCP connectors
+
+An agent's `tools:` list accepts both the short-form built-ins (`vault`, `fetch_url`) and structured MCP server configs. The runner instantiates one client per MCP entry per run, merges the server's tools into the agent's toolset, and closes the client after the run (even on error).
+
+```yaml
+tools:
+  - vault
+  - mcp:
+      name: gmail
+      url: https://mcp.gmail.com/mcp
+      auth:
+        type: bearer
+        token_env: GMAIL_TOKEN
+```
+
+Prefer `token_env` over inline `token:` in production — agent markdown files are usually version-controlled, and an inline token would end up in git history. Inline `token:` is supported only as a test/dev convenience.
+
+Auth is either `bearer` (static token, inline or from env) or `oauth` (RFC 6749 `client_credentials` grant, with module-level token cache):
+
+```yaml
+      auth:
+        type: oauth
+        client_id_env: GMAIL_CLIENT_ID
+        client_secret_env: GMAIL_CLIENT_SECRET
+        token_url: https://oauth2.googleapis.com/token
+        scope: https://www.googleapis.com/auth/gmail.readonly
+```
+
+The transport is Streamable HTTP (same as Parachute Vault). PKCE / authorization_code flows are not in scope yet — add them when an agent actually needs one. See `examples/weave-bot-selfhosted/agents/email-triage.md` for a full example.
+
 ### Local management CLI
 
 Once agents are running, `parachute-agent` is a read-mostly inspector for what the runner wrote to disk. No server, no network — just sqlite + the `./agents/` directory.

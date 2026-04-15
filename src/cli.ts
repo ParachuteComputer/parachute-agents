@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { Database } from "bun:sqlite";
 import { loadAgentsFromDir } from "./adapters/node.js";
-import { parseAgent } from "./agents.js";
+import { parseAgent, type ToolEntry } from "./agents.js";
 import { SqliteRunLog } from "./run-log-sqlite.js";
 import type { AgentRun } from "./run-log.js";
 
@@ -105,6 +105,13 @@ function triggerSummary(fm: { trigger: { type: string; [k: string]: unknown } })
   return t.type;
 }
 
+function toolsSummary(tools: ToolEntry[]): string {
+  if (tools.length === 0) return "-";
+  return tools
+    .map((t) => (typeof t === "string" ? t : `mcp:${t.mcp.name}(${t.mcp.auth.type})`))
+    .join(", ");
+}
+
 async function cmdAgentsList(flags: Flags): Promise<void> {
   const dir = resolve(flags.agentsDir);
   if (!existsSync(dir)) {
@@ -112,13 +119,18 @@ async function cmdAgentsList(flags: Flags): Promise<void> {
     process.exit(1);
   }
   const files = await loadAgentsFromDir(dir);
-  const rows: string[][] = [["NAME", "TRIGGER", "MODEL"]];
+  const rows: string[][] = [["NAME", "TRIGGER", "MODEL", "TOOLS"]];
   for (const [path, src] of Object.entries(files)) {
     try {
       const a = parseAgent(src);
-      rows.push([a.frontmatter.name, triggerSummary(a.frontmatter), a.frontmatter.model]);
+      rows.push([
+        a.frontmatter.name,
+        triggerSummary(a.frontmatter),
+        a.frontmatter.model,
+        toolsSummary(a.frontmatter.tools),
+      ]);
     } catch (e) {
-      rows.push([`(invalid: ${path})`, String((e as Error).message).slice(0, 40), "-"]);
+      rows.push([`(invalid: ${path})`, String((e as Error).message).slice(0, 40), "-", "-"]);
     }
   }
   if (rows.length === 1) {
