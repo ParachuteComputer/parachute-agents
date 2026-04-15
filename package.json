@@ -10,9 +10,21 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./cloudflare": {
+      "types": "./dist/cloudflare.d.ts",
+      "import": "./dist/cloudflare.js"
+    },
     "./triggers/webhook": {
       "types": "./dist/triggers/webhook.d.ts",
       "import": "./dist/triggers/webhook.js"
+    },
+    "./adapters/node": {
+      "types": "./dist/adapters/node.d.ts",
+      "import": "./dist/adapters/node.js"
+    },
+    "./connectors": {
+      "types": "./dist/connectors/index.d.ts",
+      "import": "./dist/connectors/index.js"
     }
   },
   "files": ["dist", "src"],
@@ -30,6 +42,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250101.0",
+    "@types/node": "^22.0.0",
     "typescript": "^5.5.0",
     "wrangler": "^3.90.0"
   }

@@ -25,7 +25,7 @@ const vaultTrigger = z.object({
 
 const manualTrigger = z.object({ type: z.literal("manual") });
 
-export const skillFrontmatterSchema = z.object({
+export const agentFrontmatterSchema = z.object({
   name: z.string(),
   description: z.string().default(""),
   trigger: z.discriminatedUnion("type", [
@@ -34,7 +34,7 @@ export const skillFrontmatterSchema = z.object({
     vaultTrigger,
     manualTrigger,
   ]),
-  model: z.string().default("nvidia/nemotron-super"),
+  model: z.string().default("nvidia/nemotron-3-super-120b-a12b"),
   tools: z.array(z.string()).default([]),
   on_save: z
     .object({
@@ -44,17 +44,25 @@ export const skillFrontmatterSchema = z.object({
     .optional(),
 });
 
-export type SkillFrontmatter = z.infer<typeof skillFrontmatterSchema>;
+export type AgentFrontmatter = z.infer<typeof agentFrontmatterSchema>;
 
-export interface Skill {
-  frontmatter: SkillFrontmatter;
+/**
+ * A parsed agent definition — one markdown file, one agent. Renamed from `Skill`
+ * in v0.0.2; composable reusable prompts will live in the vault as `agent-skill`
+ * notes later, not as a separate framework concept.
+ *
+ * Named `AgentDefinition` rather than `Agent` to avoid collision with the
+ * Cloudflare `Agent` Durable Object base class.
+ */
+export interface AgentDefinition {
+  frontmatter: AgentFrontmatter;
   systemPrompt: string;
   source: string;
 }
 
-export function parseSkill(source: string): Skill {
+export function parseAgent(source: string): AgentDefinition {
   const parsed = matter(source);
-  const frontmatter = skillFrontmatterSchema.parse(parsed.data);
+  const frontmatter = agentFrontmatterSchema.parse(parsed.data);
   return {
     frontmatter,
     systemPrompt: parsed.content.trim(),
@@ -62,27 +70,29 @@ export function parseSkill(source: string): Skill {
   };
 }
 
-export function loadSkills(sources: Record<string, string>): Map<string, Skill> {
-  const skills = new Map<string, Skill>();
+export function loadAgents(
+  sources: Record<string, string>,
+): Map<string, AgentDefinition> {
+  const agents = new Map<string, AgentDefinition>();
   for (const [key, source] of Object.entries(sources)) {
     try {
-      const skill = parseSkill(source);
-      if (skills.has(skill.frontmatter.name)) {
-        throw new Error(`duplicate skill name: ${skill.frontmatter.name}`);
+      const agent = parseAgent(source);
+      if (agents.has(agent.frontmatter.name)) {
+        throw new Error(`duplicate agent name: ${agent.frontmatter.name}`);
       }
-      skills.set(skill.frontmatter.name, skill);
+      agents.set(agent.frontmatter.name, agent);
     } catch (err) {
-      throw new Error(`failed to parse skill ${key}: ${(err as Error).message}`);
+      throw new Error(`failed to parse agent ${key}: ${(err as Error).message}`);
     }
   }
-  return skills;
+  return agents;
 }
 
 export function matchesWebhook(
-  skill: Skill,
+  agent: AgentDefinition,
   payload: { text?: string; source?: string },
 ): boolean {
-  const trigger = skill.frontmatter.trigger;
+  const trigger = agent.frontmatter.trigger;
   if (trigger.type !== "webhook") return false;
   if (payload.source && trigger.source !== "http" && trigger.source !== payload.source) {
     return false;

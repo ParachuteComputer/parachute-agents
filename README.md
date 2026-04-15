@@ -1,26 +1,60 @@
 # @openparachute/agents
 
-**Parachute Managed Agents.** A thin framework for building stateful AI agents that live on Cloudflare and natively know how to talk to a Parachute Vault.
+**Parachute Managed Agents.** A thin framework for building stateful AI agents that natively know how to talk to a Parachute Vault. Deploy to Cloudflare Workers for edge + per-agent Durable Objects, or run the same agents on a self-hosted Bun server — the agent markdown is identical across both.
 
 > **Status:** Sketch. Designed in collaboration with Aaron in an open Telegram brainstorm. Inspired by [weave-bot-orb](https://github.com/woven-web/weave-bot-orb) — same problem (Discord bot watches for URLs → AI extracts events → save to structured store), one tenth the surface area.
 
 ## What this is
 
-A Cloudflare Agents class that:
+- **One markdown file = one agent.** Each agent is a frontmatter + body file describing when to fire and what to do. No separate "skill" layer — composable reusable prompts will live in the vault later, not in a framework abstraction.
+- **Parachute Vault MCP wired in by default.** Every agent can read/write notes, traverse the graph, query tags, list links — without you writing any glue.
+- **Any model via the Vercel AI SDK.** Default is Nemotron 3 Super (120B MoE) because the magic is in the knowledge graph, not the model. Swap to Claude, GPT, Gemini, or local Ollama in one config line.
+- **Runs on Cloudflare's stateful runtime *or* self-hosted Bun.** Same agents, same runner, two deployment modes. On CF you get Durable Objects + hibernation + edge. On Bun you get a single `bun src/index.ts` on any box.
+- **Native connectors for Telegram, Discord, (Slack soon).** Connectors parse platform webhooks into a normalized `IncomingMessage` shape and reply via platform APIs — no per-platform glue in your agents.
+- **Triggers on what you'd expect:** webhook (Discord/Slack/Telegram/HTTP), cron, vault note mutation.
 
-- **Loads its behavior from a folder of markdown skill files.** Each skill is a frontmatter + body file describing when to fire and what to do.
-- **Has the Parachute Vault MCP wired in by default.** Every skill can read/write notes, traverse the graph, query tags, list links, etc. — without you writing any glue.
-- **Speaks any model via the Vercel AI SDK.** Default is Nemotron Super because the magic is in the knowledge graph, not the model. Swap to Claude, GPT, Gemini, or local Ollama in one config line.
-- **Runs on Cloudflare's stateful runtime.** Hibernate when idle, scale to millions of instances, schedule cron tasks, hold WebSocket conversations, persist state in a built-in SQLite per-agent database.
-- **Triggers on what you'd expect:** webhook (Discord/Slack/Telegram/email/HTTP), cron, vault note mutation.
-
-The result: a Discord bot that watches a channel for URLs, extracts event details with an AI, and saves them into your Parachute Vault is roughly 50 lines of TypeScript + one markdown skill file.
+The result: a Discord bot that watches a channel for URLs, extracts event details, and saves them into your Parachute Vault is roughly 50 lines of TypeScript + one markdown agent file.
 
 ## Compared to the bespoke approach
 
 `weave-bot-orb` is ~3000 lines of Python across 3 services (FastAPI agent + Discord bot + Slack bot), uses Playwright + per-org config + per-org Grist documents + multi-platform webhook routing. It works, but every new feature touches three places and storage is bolted on as a side effect.
 
-A `@openparachute/agents` agent is one Cloudflare Worker, one folder of markdown skills, and one vault. New features are new markdown files. Storage is the vault — no Grist, no SQLite-per-platform, no callback dance.
+A `@openparachute/agents` app is one runtime wrapper, one folder of markdown agents, and one vault. New features are new markdown files. Storage is the vault — no Grist, no SQLite-per-platform, no callback dance.
+
+## Which import do I use?
+
+| Runtime | Import from | What you get |
+|---|---|---|
+| Bun / Node / any JS w/ fetch | `@openparachute/agents` | `AgentRunner`, vault, connectors, handlers — runtime-agnostic |
+| Cloudflare Workers (stateful DO) | `@openparachute/agents/cloudflare` | `ParachuteAgent` (extends CF `Agent<Env, State>`) |
+| Bun HTTP adapter | `@openparachute/agents/adapters/node` | `serveBun`, `loadAgentsFromDir`, `startSelfHosted` |
+
+The Cloudflare entry pulls `partyserver` (needs `cloudflare:workers` virtual module) — only import it from Worker code. The base entry is safe everywhere.
+
+## Two deployment modes
+
+Pick whichever suits the app — **the agent markdown is identical**, only the runtime wrapper differs.
+
+### Cloudflare Workers + Durable Objects
+
+```
+my-agent/
+├── wrangler.toml          # rules = [{ type = "Text", globs = ["agents/**/*.md"] }]
+├── agents/*.md            # imported as raw strings at build time
+└── src/index.ts           # extend ParachuteAgent, register as DO
+```
+
+`examples/weave-bot/` is the reference.
+
+### Self-hosted Bun
+
+```
+my-agent/
+├── agents/*.md            # loaded from disk at startup
+└── src/index.ts           # import { startSelfHosted } from "@openparachute/agents/adapters/node"
+```
+
+`examples/weave-bot-selfhosted/` is the reference. Run with `bun src/index.ts`.
 
 ## The shape (sketch)
 
@@ -28,14 +62,14 @@ A `@openparachute/agents` agent is one Cloudflare Worker, one folder of markdown
 my-agent/
 ├── wrangler.toml
 ├── src/
-│   └── index.ts          # ~30 lines: instantiate ParachuteAgent, wire triggers
-├── skills/
-│   ├── extract-event.md  # frontmatter + system prompt
-│   └── weekly-summary.md # cron skill
+│   └── index.ts            # ~30 lines: instantiate ParachuteAgent, wire triggers
+├── agents/
+│   ├── extract-event.md    # frontmatter + system prompt
+│   └── weekly-summary.md   # cron agent
 └── package.json
 ```
 
-A skill file:
+An agent file:
 
 ```yaml
 ---
@@ -45,7 +79,7 @@ trigger:
   type: webhook
   source: discord
   match: contains_url
-model: nvidia/nemotron-super
+model: nvidia/nemotron-3-super-120b-a12b
 tools: [fetch_url, vault]
 on_save:
   tags: [event]
@@ -61,7 +95,7 @@ You are an event extraction agent. When a URL is shared:
 ```
 
 That's it. The framework handles:
-- Discord webhook → match URL → fire skill
+- Discord webhook → match URL → fire agent
 - Vercel AI SDK loop with the model + tools
 - Vault MCP auto-injection (tools: `query-notes`, `create-note`, `update-note`, etc.)
 - Reply formatting back to Discord

@@ -3,9 +3,9 @@ name: extract-event
 description: When a URL is shared, extract event metadata and save it to the vault.
 trigger:
   type: webhook
-  source: discord
+  source: telegram
   match: contains_url
-model: nvidia/nemotron-nano-9b-v2
+model: nvidia/nemotron-3-super-120b-a12b
 tools: [vault]
 on_save:
   tags: [event]

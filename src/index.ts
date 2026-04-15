@@ -1,17 +1,36 @@
-export { ParachuteAgent, SkillRunner } from "./ParachuteAgent.js";
+/**
+ * Runtime-agnostic entry point. Safe to import from any JS runtime with `fetch`.
+ *
+ * For the Cloudflare Durable Object wrapper (`ParachuteAgent`), import from
+ * `@openparachute/agents/cloudflare` instead — that entry pulls in `partyserver`,
+ * which requires the `cloudflare:workers` virtual module only present in Workers.
+ */
+export { AgentRunner } from "./runner.js";
 export type {
   ParachuteAgentConfig,
-  SkillRunInput,
-  SkillRunResult,
-} from "./ParachuteAgent.js";
+  AgentRunInput,
+  AgentRunResult,
+} from "./runner.js";
 export { Vault } from "./vault.js";
 export type { VaultConfig } from "./vault.js";
 export {
-  loadSkills,
-  parseSkill,
+  loadAgents,
+  parseAgent,
   matchesWebhook,
-  skillFrontmatterSchema,
-} from "./skills.js";
-export type { Skill, SkillFrontmatter } from "./skills.js";
-export { handleWebhook } from "./triggers/webhook.js";
-export type { WebhookPayload } from "./triggers/webhook.js";
+  agentFrontmatterSchema,
+} from "./agents.js";
+export type { AgentDefinition, AgentFrontmatter } from "./agents.js";
+export { handleWebhook, handleConnectorWebhook } from "./triggers/webhook.js";
+export type { WebhookPayload, ConnectorWebhookOptions } from "./triggers/webhook.js";
+export {
+  telegram,
+  discord,
+} from "./connectors/index.js";
+export type {
+  Connector,
+  IncomingMessage,
+  OutgoingMessage,
+  Platform,
+  TelegramConfig,
+  DiscordConfig,
+} from "./connectors/index.js";
