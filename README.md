@@ -167,6 +167,24 @@ parachute-agent convo clear telegram:chat1 --yes     # wipe one conversation
 
 Defaults: `./agents/` for markdown, `./.agents/` for sqlite dbs. Override with `--agents-dir` / `--db-dir`. Run `parachute-agent --help` for the full list.
 
+### Web UI
+
+A separate bin, `parachute-agent-ui`, runs a small local dashboard for the same files the CLI reads — no runner HTTP control plane, no writes. Point it at the same dirs:
+
+```
+parachute-agent-ui                                   # http://127.0.0.1:6062
+parachute-agent-ui --port 6080 --host 0.0.0.0        # expose over Tailscale / LAN
+parachute-agent-ui --agents-dir ./my-agents --db-dir ./state
+```
+
+What it shows:
+- **Agents** as a grid of cards — trigger, model, tools, last-run status + recent-run tail. Flash on new runs via SSE (`/api/stream`).
+- **Agent detail** — full system prompt + the last 100 runs.
+- **Run detail** — input, output (or error), duration, trigger, linked conversation.
+- **Conversations** — list + per-thread message view.
+
+Keyboard: `/` focuses filter, `r` reloads, `Esc` clears the filter. Env overrides: `PARACHUTE_AGENT_UI_PORT`, `PARACHUTE_AGENT_UI_HOST`, `PARACHUTE_AGENT_UI_POLL_MS`. Bind defaults to loopback — pass `--host 0.0.0.0` when you want to reach it from another machine.
+
 > **Coming:** an umbrella `@openparachute/cli` that bundles this plus vault/daily tooling under one binary.
 
 ## The shape (sketch)

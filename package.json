@@ -41,14 +41,19 @@
     "./cursor-store-sqlite": {
       "types": "./dist/cursor-store-sqlite.d.ts",
       "import": "./dist/cursor-store-sqlite.js"
+    },
+    "./ui": {
+      "types": "./dist/ui/server.d.ts",
+      "import": "./dist/ui/server.js"
     }
   },
   "bin": {
-    "parachute-agent": "./dist/cli.js"
+    "parachute-agent": "./dist/cli.js",
+    "parachute-agent-ui": "./dist/ui/server.js"
   },
   "files": ["dist", "src"],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && mkdir -p dist/ui/public && cp -R src/ui/public/. dist/ui/public/",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
@@ -59,6 +64,7 @@
     "ai": "^4.0.0",
     "croner": "^10.0.1",
     "gray-matter": "^4.0.3",
+    "hono": "^4.12.14",
     "zod": "^3.23.0"
   },
   "devDependencies": {
