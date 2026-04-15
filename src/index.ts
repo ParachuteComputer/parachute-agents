@@ -15,6 +15,14 @@ export type {
 export { MemoryConversationStore } from "./conversation-store.js";
 export type { ConversationStore, ConversationTurn } from "./conversation-store.js";
 export type { Scheduler } from "./scheduler.js";
+export { MemoryRunLog } from "./run-log.js";
+export type {
+  AgentRun,
+  RunLog,
+  RunLogListOptions,
+  RunLogClearOptions,
+  RunTrigger,
+} from "./run-log.js";
 export { Vault } from "./vault.js";
 export type { VaultConfig } from "./vault.js";
 export {

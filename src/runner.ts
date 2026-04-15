@@ -8,6 +8,13 @@ import {
   type ConversationStore,
 } from "./conversation-store.js";
 import type { Scheduler } from "./scheduler.js";
+import {
+  MemoryRunLog,
+  type AgentRun,
+  type RunLog,
+  type RunLogListOptions,
+  type RunTrigger,
+} from "./run-log.js";
 
 export interface ParachuteAgentConfig {
   /** Map of agent file path → raw markdown contents. Usually wired via wrangler text-loader imports or the filesystem loader. */
@@ -26,6 +33,8 @@ export interface ParachuteAgentConfig {
   conversationStore?: ConversationStore;
   /** If set, agents with `trigger.type: cron` auto-register on construction. */
   scheduler?: Scheduler;
+  /** Run log for observability. Defaults to an in-process {@link MemoryRunLog}. */
+  runLog?: RunLog;
 }
 
 export interface AgentRunInput {
@@ -50,6 +59,8 @@ export interface AgentRunOptions {
    * (pass a `MockLanguageModelV1`) or for runtime tier-switching.
    */
   model?: LanguageModel;
+  /** What invoked this run. Defaults to `"manual"` — webhook/cron paths stamp the appropriate value. */
+  trigger?: RunTrigger;
 }
 
 export interface AgentRunResult {
@@ -80,6 +91,7 @@ export class AgentRunner {
   /** Agents in webhook-match priority order: specific matchers before `match: always` catch-alls. */
   private _webhookOrder: AgentDefinition[];
   private _conversationStore: ConversationStore;
+  private _runLog: RunLog;
 
   constructor(private readonly config: ParachuteAgentConfig) {
     this._agents = loadAgents(config.agents);
@@ -90,6 +102,7 @@ export class AgentRunner {
       return wildcardRank(a) - wildcardRank(b);
     });
     this._conversationStore = config.conversationStore ?? new MemoryConversationStore();
+    this._runLog = config.runLog ?? new MemoryRunLog();
 
     if (config.scheduler) {
       for (const agent of this._agents.values()) {
@@ -97,7 +110,7 @@ export class AgentRunner {
         if (trigger.type !== "cron") continue;
         const name = agent.frontmatter.name;
         config.scheduler.schedule(name, trigger.schedule, async () => {
-          await this.runAgent(name, { text: "" });
+          await this.runAgent(name, { text: "" }, { trigger: "cron" });
         });
       }
     }
@@ -109,6 +122,18 @@ export class AgentRunner {
 
   conversationStore(): ConversationStore {
     return this._conversationStore;
+  }
+
+  runLog(): RunLog {
+    return this._runLog;
+  }
+
+  runs(opts: RunLogListOptions = {}): Promise<AgentRun[]> {
+    return this._runLog.list(opts);
+  }
+
+  run(id: string): Promise<AgentRun | null> {
+    return this._runLog.get(id);
   }
 
   /** First matching agent in load order wins; within the same priority tier, load order decides. `match: always` agents are ranked last so specific matchers claim their messages first. */
@@ -147,31 +172,65 @@ export class AgentRunner {
       ? await this._conversationStore.history(conversationId, historyLimit)
       : [];
 
-    const userTs = Date.now();
+    const startedAt = Date.now();
     const messages: CoreMessage[] = [
       ...history.map((t) => ({ role: t.role, content: t.content }) as CoreMessage),
       { role: "user", content: text },
     ];
 
-    const result = await generateText({
-      model,
-      system: agent.systemPrompt,
-      messages,
-      tools,
-      maxSteps: 8,
-    });
+    const runId = crypto.randomUUID();
+    const runTrigger: RunTrigger = options.trigger ?? "manual";
 
-    if (conversationId) {
-      await appendTurns(this._conversationStore, conversationId, [
-        { role: "user", content: text, ts: userTs },
-        { role: "assistant", content: result.text, ts: Date.now() },
-      ]);
+    try {
+      const result = await generateText({
+        model,
+        system: agent.systemPrompt,
+        messages,
+        tools,
+        maxSteps: 8,
+      });
+
+      if (conversationId) {
+        await appendTurns(this._conversationStore, conversationId, [
+          { role: "user", content: text, ts: startedAt },
+          { role: "assistant", content: result.text, ts: Date.now() },
+        ]);
+      }
+
+      const endedAt = Date.now();
+      await this._runLog.record({
+        id: runId,
+        agentName: agent.frontmatter.name,
+        startedAt,
+        endedAt,
+        durationMs: endedAt - startedAt,
+        input: { text, source: input.source, conversationId },
+        output: result.text,
+        toolCalls: result.toolCalls?.length ?? 0,
+        error: null,
+        trigger: runTrigger,
+      });
+
+      return {
+        text: result.text,
+        agent: agent.frontmatter.name,
+        toolCalls: result.toolCalls?.length ?? 0,
+      };
+    } catch (err) {
+      const endedAt = Date.now();
+      await this._runLog.record({
+        id: runId,
+        agentName: agent.frontmatter.name,
+        startedAt,
+        endedAt,
+        durationMs: endedAt - startedAt,
+        input: { text, source: input.source, conversationId },
+        output: null,
+        toolCalls: 0,
+        error: err instanceof Error ? err.message : String(err),
+        trigger: runTrigger,
+      });
+      throw err;
     }
-
-    return {
-      text: result.text,
-      agent: agent.frontmatter.name,
-      toolCalls: result.toolCalls?.length ?? 0,
-    };
   }
 }

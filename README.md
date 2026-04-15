@@ -71,6 +71,10 @@ const runner = new AgentRunner({
 });
 ```
 
+### Run log
+
+Every agent invocation is recorded — agent name, input, output, tool-call count, duration, error, trigger. Query via `runner.runs({agent, limit, since})` or `runner.run(id)`. Default is in-memory (capped at 1000 per agent); swap in `SqliteRunLog` from `@openparachute/agents/run-log-sqlite` for persistence. Foundation for the upcoming management UI.
+
 ### Cron triggers
 
 Agents with `trigger.type: cron` register on the configured scheduler when the runner starts. Self-hosted defaults to a [croner](https://github.com/Hexagon/croner)-backed `NodeCronScheduler` (wired automatically by `startSelfHosted`); pass your own `Scheduler` on the config to use a different backend. Cloudflare Workers cron (via `wrangler.toml` triggers + the DO `alarm()` method) is a follow-up PR.
