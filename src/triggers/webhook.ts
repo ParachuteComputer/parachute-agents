@@ -30,10 +30,14 @@ export async function handleWebhook(
   const agent = runner.matchWebhook({ text: payload.text, source: payload.source });
   if (!agent) return new Response(null, { status: 204 });
 
-  const result = await runner.runAgent(agent.frontmatter.name, {
-    user: payload.text,
-    context: payload.meta,
-  });
+  const conversationId =
+    typeof payload.meta?.conversation_id === "string" ? payload.meta.conversation_id : undefined;
+
+  const result = await runner.runAgent(
+    agent.frontmatter.name,
+    { text: payload.text, source: payload.source, meta: payload.meta },
+    { conversationId },
+  );
   return Response.json(result);
 }
 
@@ -59,10 +63,15 @@ export async function handleConnectorWebhook<Config>(
   const agent = runner.matchWebhook({ text: msg.text, source: msg.platform });
   if (!agent) return new Response(null, { status: 204 });
 
-  const result = await runner.runAgent(agent.frontmatter.name, {
-    user: msg.text,
-    context: { sender: msg.sender, channelId: msg.channelId, meta: msg.meta },
-  });
+  const result = await runner.runAgent(
+    agent.frontmatter.name,
+    {
+      text: msg.text,
+      source: msg.platform,
+      meta: { sender: msg.sender, channelId: msg.channelId, meta: msg.meta },
+    },
+    { conversationId: `${msg.platform}:${msg.channelId}` },
+  );
 
   if (opts.autoReply && result.text) {
     await opts.connector.reply(

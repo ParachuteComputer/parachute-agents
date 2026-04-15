@@ -9,8 +9,11 @@ export { AgentRunner } from "./runner.js";
 export type {
   ParachuteAgentConfig,
   AgentRunInput,
+  AgentRunOptions,
   AgentRunResult,
 } from "./runner.js";
+export { MemoryConversationStore } from "./conversation-store.js";
+export type { ConversationStore, ConversationTurn } from "./conversation-store.js";
 export { Vault } from "./vault.js";
 export type { VaultConfig } from "./vault.js";
 export {
