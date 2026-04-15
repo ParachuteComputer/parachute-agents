@@ -21,6 +21,12 @@ const vaultTrigger = z.object({
       not_tags: z.array(z.string()).optional(),
     })
     .optional(),
+  /**
+   * Polling interval in seconds. Push-based firing is future work — it needs
+   * vault webhooks, which aren't upstream yet. Min 10s to keep poll storms
+   * off the vault while still feeling responsive.
+   */
+  poll_seconds: z.number().int().min(10).default(60),
 });
 
 const manualTrigger = z.object({ type: z.literal("manual") });
@@ -106,6 +112,7 @@ export const agentFrontmatterSchema = z.object({
 });
 
 export type AgentFrontmatter = z.infer<typeof agentFrontmatterSchema>;
+export type VaultTrigger = z.infer<typeof vaultTrigger>;
 
 /**
  * A parsed agent definition — one markdown file, one agent. Renamed from `Skill`

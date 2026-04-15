@@ -101,7 +101,14 @@ function triggerSummary(fm: { trigger: { type: string; [k: string]: unknown } })
   const t = fm.trigger;
   if (t.type === "webhook") return `webhook ${t.source as string}/${t.match as string}`;
   if (t.type === "cron") return `cron ${t.schedule as string}`;
-  if (t.type === "vault") return `vault ${t.on_event as string}`;
+  if (t.type === "vault") {
+    const filter = (t.filter as { tags?: string[]; not_tags?: string[] } | undefined) ?? {};
+    const parts = [`vault:${t.on_event as string}`];
+    if (filter.tags?.length) parts.push(`tags=[${filter.tags.join(",")}]`);
+    if (filter.not_tags?.length) parts.push(`not=[${filter.not_tags.join(",")}]`);
+    parts.push(`poll=${t.poll_seconds as number}s`);
+    return parts.join(" ");
+  }
   return t.type;
 }
 

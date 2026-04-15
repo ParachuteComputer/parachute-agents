@@ -31,7 +31,17 @@ export {
   matchesWebhook,
   agentFrontmatterSchema,
 } from "./agents.js";
-export type { AgentDefinition, AgentFrontmatter } from "./agents.js";
+export type { AgentDefinition, AgentFrontmatter, VaultTrigger, ToolEntry } from "./agents.js";
+export { MemoryCursorStore } from "./cursor-store.js";
+export type { CursorStore } from "./cursor-store.js";
+export { VaultWatcher, createVaultQueryFn } from "./vault-watcher.js";
+export type {
+  VaultNote,
+  VaultQuery,
+  QueryNotes,
+  VaultWatcherConfig,
+  WatchableRunner,
+} from "./vault-watcher.js";
 export { handleWebhook, handleConnectorWebhook } from "./triggers/webhook.js";
 export type { WebhookPayload, ConnectorWebhookOptions } from "./triggers/webhook.js";
 export {
