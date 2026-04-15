@@ -56,6 +56,54 @@ my-agent/
 
 `examples/weave-bot-selfhosted/` is the reference. Run with `bun src/index.ts`.
 
+### Backends
+
+By default the runner drives inference through the **Vercel AI SDK** (`generateText`) against any OpenAI-compatible provider. Each agent can opt into a native **Claude** backend by setting `backend: claude` in its frontmatter — useful when you want to drive Anthropic's Messages API directly (tool-use loop, Claude-specific features) instead of going through the AI-SDK abstraction. You can also flip the default for every agent via `backend: "claude"` on the runner config.
+
+```ts
+import { AgentRunner } from "@openparachute/agent";
+
+const runner = new AgentRunner({
+  agents,
+  // vercel-ai backend (default) — configure an OpenAI-compatible provider:
+  provider: { name: "openrouter", baseURL: "https://openrouter.ai/api/v1", apiKey: process.env.OPENROUTER_KEY! },
+  // claude backend — required only when at least one agent resolves to backend: "claude"
+  claudeAuth: { apiKey: process.env.ANTHROPIC_API_KEY! },
+});
+```
+
+```yaml
+---
+name: deep-research
+trigger: { type: manual }
+backend: claude
+model: claude-sonnet-4-5
+tools: [vault]
+---
+```
+
+Both backends share the same MCP tool pipeline — `vault` and `mcp:` entries work identically. Claude-only configs can omit `provider` entirely.
+
+### Agent sources
+
+The `agents` map is just `{ path → markdown }`, so you can build it however you want. Three helpers cover the common cases:
+
+- **Inline** (`loadAgentsInline`) — hand-authored map, useful for tests or tiny deployments.
+- **Filesystem** (`loadAgentsFromDir` in `@openparachute/agent/adapters/node`) — walks a directory of `.md` files.
+- **Vault** (`loadAgentsFromVault`) — queries a Parachute Vault for notes tagged `agent-definition` (override with `tag:`). Each note's body becomes an agent. One-shot snapshot; re-run the loader (or restart the runner) to pick up vault changes.
+
+```ts
+import { AgentRunner, loadAgentsFromVault } from "@openparachute/agent";
+
+const agents = await loadAgentsFromVault({
+  vault: { url, token },
+  tag: "agent-definition", // default
+});
+const runner = new AgentRunner({ agents, vault: { url, token }, provider });
+```
+
+If the vault is unreachable at boot, `loadAgentsFromVault` logs a warning and returns `{}` — the runner boots with zero agents rather than crashing on a transient blip.
+
 ### Conversation memory
 
 Chat agents get threaded history automatically, scoped per `(source, chat_id)` — so a Telegram thread feels like a continuing conversation instead of a series of amnesiac replies. The default store is in-process (`MemoryConversationStore`); swap in `SqliteConversationStore` for a Bun-backed file, or pass your own `ConversationStore` implementation via `conversationStore` in the runner config. Generic `/webhook` callers can opt in per-request by passing `meta.conversation_id`.

@@ -92,6 +92,15 @@ export function isMcpToolEntry(entry: ToolEntry): entry is McpToolEntry {
   return typeof entry !== "string";
 }
 
+/**
+ * Which inference backend executes the agent loop. `vercel-ai` is the default
+ * and uses the OpenAI-compatible provider from `ParachuteAgentConfig.provider`.
+ * `claude` uses the Anthropic Messages API via `@anthropic-ai/sdk` and picks up
+ * auth from `ParachuteAgentConfig.claudeAuth`.
+ */
+export const backendSchema = z.enum(["vercel-ai", "claude"]);
+export type Backend = z.infer<typeof backendSchema>;
+
 export const agentFrontmatterSchema = z.object({
   name: z.string(),
   description: z.string().default(""),
@@ -102,6 +111,8 @@ export const agentFrontmatterSchema = z.object({
     manualTrigger,
   ]),
   model: z.string().default("nvidia/nemotron-3-super-120b-a12b"),
+  /** Per-agent backend override. Falls back to `ParachuteAgentConfig.backend`, default `vercel-ai`. */
+  backend: backendSchema.optional(),
   tools: z.array(toolEntry).default([]),
   on_save: z
     .object({
