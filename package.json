@@ -30,7 +30,8 @@
   "files": ["dist", "src"],
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^0.2.0",

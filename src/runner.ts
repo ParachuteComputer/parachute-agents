@@ -59,6 +59,7 @@ export class AgentRunner {
     return this._agents;
   }
 
+  /** First matching agent in load order wins; within the same priority tier, load order decides. `match: always` agents are ranked last so specific matchers claim their messages first. */
   matchWebhook(payload: { text?: string; source?: string }): AgentDefinition | undefined {
     for (const agent of this._webhookOrder) {
       if (matchesWebhook(agent, payload)) return agent;
