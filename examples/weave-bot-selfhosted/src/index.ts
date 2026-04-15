@@ -25,19 +25,25 @@ const { server } = await startSelfHosted({
   serve: {
     port: Number(env.PORT ?? 3000),
     webhookPath: "/webhook",
+    // Register only the connectors whose bot tokens are set.
+    // Matches the README: "optional; endpoint is off if unset".
     connectors: [
-      {
-        path: "/webhook/telegram",
-        connector: telegram,
-        config: { botToken: required("TELEGRAM_BOT_TOKEN") },
-        autoReply: true,
-      },
-      {
-        path: "/webhook/discord",
-        connector: discord,
-        config: { botToken: required("DISCORD_BOT_TOKEN") },
-        autoReply: true,
-      },
+      ...(env.TELEGRAM_BOT_TOKEN
+        ? [{
+            path: "/webhook/telegram",
+            connector: telegram,
+            config: { botToken: env.TELEGRAM_BOT_TOKEN },
+            autoReply: true,
+          }]
+        : []),
+      ...(env.DISCORD_BOT_TOKEN
+        ? [{
+            path: "/webhook/discord",
+            connector: discord,
+            config: { botToken: env.DISCORD_BOT_TOKEN },
+            autoReply: true,
+          }]
+        : []),
     ],
   },
 });
