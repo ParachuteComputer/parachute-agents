@@ -1,4 +1,4 @@
-export type RunTrigger = "webhook" | "cron" | "manual";
+export type RunTrigger = "webhook" | "cron" | "vault" | "manual";
 
 export interface AgentRun {
   id: string;

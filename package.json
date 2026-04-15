@@ -37,6 +37,10 @@
     "./run-log-sqlite": {
       "types": "./dist/run-log-sqlite.d.ts",
       "import": "./dist/run-log-sqlite.js"
+    },
+    "./cursor-store-sqlite": {
+      "types": "./dist/cursor-store-sqlite.d.ts",
+      "import": "./dist/cursor-store-sqlite.js"
     }
   },
   "bin": {

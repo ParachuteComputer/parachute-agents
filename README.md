@@ -90,6 +90,37 @@ tools: [vault]
 ---
 ```
 
+### Vault triggers
+
+Agents can fire in response to mutations in a Parachute Vault — the killer pattern for the vault-as-memory model. v0 is polling-based; push-based firing waits on upstream vault webhooks, which aren't shipped yet.
+
+```yaml
+trigger:
+  type: vault
+  on_event: created          # or `updated`
+  filter:
+    tags: [captured]         # AND semantics across tags
+    not_tags: [processed]    # AND NOT
+  poll_seconds: 60           # default 60, min 10
+```
+
+Each vault-triggered agent gets its own interval. On each tick, the watcher queries the vault for matching notes created (or updated) since the agent's cursor, processes them oldest-first so the cursor advances monotonically, and invokes `runAgent(..., {trigger: "vault"})` with the full note JSON as input text. A failed run leaves the cursor alone so the next tick retries — we'd rather double-fire than silently drop.
+
+Persist cursors across restarts by passing a `SqliteCursorStore`:
+
+```ts
+import { AgentRunner } from "@openparachute/agent";
+import { SqliteCursorStore } from "@openparachute/agent/cursor-store-sqlite";
+
+new AgentRunner({
+  /* ... */
+  vault: { url, token },
+  vaultWatcher: { cursorStore: new SqliteCursorStore("./.agents/cursors.db") },
+});
+```
+
+See `examples/weave-bot-selfhosted/agents/captured-triage.md`.
+
 ### MCP connectors
 
 An agent's `tools:` list accepts both the short-form built-ins (`vault`, `fetch_url`) and structured MCP server configs. The runner instantiates one client per MCP entry per run, merges the server's tools into the agent's toolset, and closes the client after the run (even on error).

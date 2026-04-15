@@ -14,6 +14,12 @@ import {
   type ConversationStore,
 } from "./conversation-store.js";
 import type { Scheduler } from "./scheduler.js";
+import type { CursorStore } from "./cursor-store.js";
+import {
+  VaultWatcher,
+  createVaultQueryFn,
+  type QueryNotes,
+} from "./vault-watcher.js";
 import {
   MemoryRunLog,
   type AgentRun,
@@ -43,6 +49,19 @@ export interface ParachuteAgentConfig {
   runLog?: RunLog;
   /** Test hook: override the MCP client factory so tests don't open real sockets. */
   createMcpClient?: typeof createMcpClient;
+  /**
+   * Wire up a vault watcher for agents with `trigger.type: "vault"`. Polling
+   * only — push-based firing waits on upstream vault webhooks.
+   */
+  vaultWatcher?: {
+    cursorStore?: CursorStore;
+    /** Inject a custom query implementation (tests, or a non-MCP vault transport). Defaults to `createVaultQueryFn(config.vault)`. */
+    queryNotes?: QueryNotes;
+    /** Defaults to `true` when `scheduler` is set — the host is long-lived. */
+    autoStart?: boolean;
+    /** Forwarded to the watcher for diagnostics. */
+    logger?: (msg: string) => void;
+  };
 }
 
 export interface AgentRunInput {
@@ -100,6 +119,7 @@ export class AgentRunner {
   private _webhookOrder: AgentDefinition[];
   private _conversationStore: ConversationStore;
   private _runLog: RunLog;
+  private _vaultWatcher: VaultWatcher | null = null;
 
   constructor(private readonly config: ParachuteAgentConfig) {
     this._agents = loadAgents(config.agents);
@@ -122,6 +142,35 @@ export class AgentRunner {
         });
       }
     }
+
+    const hasVaultTriggers = [...this._agents.values()].some(
+      (a) => a.frontmatter.trigger.type === "vault",
+    );
+    const vwOpts = config.vaultWatcher;
+    const wantWatcher = vwOpts !== undefined || hasVaultTriggers;
+    if (hasVaultTriggers && wantWatcher) {
+      const queryNotes =
+        vwOpts?.queryNotes ??
+        (config.vault ? createVaultQueryFn(config.vault) : undefined);
+      if (!queryNotes) {
+        throw new Error(
+          "vault-triggered agents require either `config.vault` or `config.vaultWatcher.queryNotes`",
+        );
+      }
+      this._vaultWatcher = new VaultWatcher({
+        runner: this,
+        queryNotes,
+        cursorStore: vwOpts?.cursorStore,
+        logger: vwOpts?.logger,
+      });
+      const autoStart = vwOpts?.autoStart ?? Boolean(config.scheduler);
+      if (autoStart) this._vaultWatcher.start();
+    }
+  }
+
+  /** Returns the internal vault watcher if one was constructed — callers use this to `stop()` on shutdown. */
+  vaultWatcher(): VaultWatcher | null {
+    return this._vaultWatcher;
   }
 
   agents(): Map<string, AgentDefinition> {
