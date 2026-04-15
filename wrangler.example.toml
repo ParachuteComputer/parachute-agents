@@ -6,9 +6,9 @@ main = "src/index.ts"
 compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 
-# Load skill markdown as raw strings at build time.
+# Load agent markdown as raw strings at build time.
 rules = [
-  { type = "Text", globs = ["**/*.md"], fallthrough = true }
+  { type = "Text", globs = ["agents/**/*.md"], fallthrough = true }
 ]
 
 [durable_objects]
