@@ -31,7 +31,11 @@ export {
   matchesWebhook,
   agentFrontmatterSchema,
 } from "./agents.js";
-export type { AgentDefinition, AgentFrontmatter, VaultTrigger, ToolEntry } from "./agents.js";
+export type { AgentDefinition, AgentFrontmatter, VaultTrigger, ToolEntry, Backend } from "./agents.js";
+export { loadAgentsFromVault, loadAgentsInline } from "./agent-sources.js";
+export type { LoadAgentsFromVaultOptions } from "./agent-sources.js";
+export { runClaudeBackend, buildClaudeTools, buildAnthropicClient } from "./backends/claude.js";
+export type { ClaudeAuth, ClaudeTool, ClaudeBackendRunArgs, ClaudeBackendRunResult } from "./backends/claude.js";
 export { MemoryCursorStore } from "./cursor-store.js";
 export type { CursorStore } from "./cursor-store.js";
 export { VaultWatcher, createVaultQueryFn } from "./vault-watcher.js";

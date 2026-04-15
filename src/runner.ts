@@ -5,9 +5,16 @@ import {
   loadAgents,
   matchesWebhook,
   type AgentDefinition,
+  type Backend,
 } from "./agents.js";
 import { Vault, type VaultConfig } from "./vault.js";
 import { createMcpClient, type McpClient } from "./mcp/connector.js";
+import {
+  buildClaudeTools,
+  runClaudeBackend,
+  type ClaudeAuth,
+  type ClaudeBackendToolOptions,
+} from "./backends/claude.js";
 import {
   MemoryConversationStore,
   appendTurns,
@@ -33,12 +40,19 @@ export interface ParachuteAgentConfig {
   agents: Record<string, string>;
   /** Vault MCP endpoint + token. If omitted, agents cannot use the `vault` tool. */
   vault?: VaultConfig;
-  /** OpenAI-compatible provider (OpenRouter, together.ai, etc.) for the default model. */
-  provider: {
+  /** OpenAI-compatible provider (OpenRouter, together.ai, etc.) for the default model. Optional when every agent uses the Claude backend. */
+  provider?: {
     name: string;
     baseURL: string;
     apiKey: string;
   };
+  /**
+   * Default inference backend. Falls back to `"vercel-ai"`. Per-agent
+   * overrides live in the frontmatter as `backend: "claude"`.
+   */
+  backend?: Backend;
+  /** Auth for the Claude backend. Required only when at least one agent resolves to `backend: "claude"`. */
+  claudeAuth?: ClaudeAuth;
   /** Extra tools the host wants to expose to agents (e.g. `fetch_url`). */
   tools?: Record<string, Tool>;
   /** Conversation memory backing. Defaults to an in-process {@link MemoryConversationStore}. */
@@ -83,9 +97,17 @@ export interface AgentRunOptions {
   historyLimit?: number;
   /**
    * Override the agent's configured model for this call. Useful for testing
-   * (pass a `MockLanguageModelV1`) or for runtime tier-switching.
+   * (pass a `MockLanguageModelV1`) or for runtime tier-switching. Only honored
+   * by the Vercel AI backend.
    */
   model?: LanguageModel;
+  /** Override the Claude model ID for this call. Only honored by the Claude backend. */
+  claudeModel?: string;
+  /**
+   * Inject a pre-built Anthropic client — for tests that want to avoid the
+   * network. Production callers should use `config.claudeAuth` instead.
+   */
+  anthropicClient?: import("@anthropic-ai/sdk").default;
   /** What invoked this run. Defaults to `"manual"` — webhook/cron paths stamp the appropriate value. */
   trigger?: RunTrigger;
 }
@@ -210,56 +232,25 @@ export class AgentRunner {
     if (!agent) throw new Error(`unknown agent: ${name}`);
     const text = resolveText(input);
 
-    const model: LanguageModel =
-      options.model ??
-      createOpenAICompatible({
-        name: this.config.provider.name,
-        baseURL: this.config.provider.baseURL,
-        apiKey: this.config.provider.apiKey,
-      })(agent.frontmatter.model);
-
-    const tools: Record<string, Tool> = { ...(this.config.tools ?? {}) };
-    const mcpClients: McpClient[] = [];
-    const mcpFactory = this.config.createMcpClient ?? createMcpClient;
-    const entries = agent.frontmatter.tools;
-
     const conversationId = options.conversationId;
     const startedAt = Date.now();
     const runId = crypto.randomUUID();
     const runTrigger: RunTrigger = options.trigger ?? "manual";
+    const historyLimit = options.historyLimit ?? 20;
+
+    const backend: Backend =
+      agent.frontmatter.backend ?? this.config.backend ?? "vercel-ai";
 
     try {
-      // Tool setup is inside the try block so that a failure while wiring up
-      // MCP clients (e.g. the second factory throws) still closes any clients
-      // already created by the finally below and still records a failed run.
-      const wantsVault = entries.some((e) => e === "vault");
-      if (wantsVault && this.config.vault) {
-        Object.assign(tools, await new Vault(this.config.vault).tools());
-      }
-      for (const entry of entries) {
-        if (!isMcpToolEntry(entry)) continue;
-        const client = await mcpFactory(entry.mcp);
-        mcpClients.push(client);
-        Object.assign(tools, await client.tools());
-      }
-
-      const historyLimit = options.historyLimit ?? 20;
       const history = conversationId
         ? await this._conversationStore.history(conversationId, historyLimit)
         : [];
 
-      const messages: CoreMessage[] = [
-        ...history.map((t) => ({ role: t.role, content: t.content }) as CoreMessage),
-        { role: "user", content: text },
-      ];
-
-      const result = await generateText({
-        model,
-        system: agent.systemPrompt,
-        messages,
-        tools,
-        maxSteps: 8,
-      });
+      const exec =
+        backend === "claude"
+          ? () => this.runClaudeBackendForAgent(agent, history, text, options)
+          : () => this.runVercelAiBackendForAgent(agent, history, text, options);
+      const result = await exec();
 
       if (conversationId) {
         await appendTurns(this._conversationStore, conversationId, [
@@ -277,7 +268,7 @@ export class AgentRunner {
         durationMs: endedAt - startedAt,
         input: { text, source: input.source, conversationId },
         output: result.text,
-        toolCalls: result.toolCalls?.length ?? 0,
+        toolCalls: result.toolCalls,
         error: null,
         trigger: runTrigger,
       });
@@ -285,7 +276,7 @@ export class AgentRunner {
       return {
         text: result.text,
         agent: agent.frontmatter.name,
-        toolCalls: result.toolCalls?.length ?? 0,
+        toolCalls: result.toolCalls,
       };
     } catch (err) {
       const endedAt = Date.now();
@@ -302,8 +293,98 @@ export class AgentRunner {
         trigger: runTrigger,
       });
       throw err;
+    }
+  }
+
+  private async runVercelAiBackendForAgent(
+    agent: AgentDefinition,
+    history: Array<{ role: "user" | "assistant"; content: string }>,
+    text: string,
+    options: AgentRunOptions,
+  ): Promise<{ text: string; toolCalls: number }> {
+    if (!options.model && !this.config.provider) {
+      throw new Error(
+        "vercel-ai backend requires `config.provider`. Set it, pass `options.model`, or use `backend: claude`.",
+      );
+    }
+    const model: LanguageModel =
+      options.model ??
+      createOpenAICompatible({
+        name: this.config.provider!.name,
+        baseURL: this.config.provider!.baseURL,
+        apiKey: this.config.provider!.apiKey,
+      })(agent.frontmatter.model);
+
+    const tools: Record<string, Tool> = { ...(this.config.tools ?? {}) };
+    const mcpClients: McpClient[] = [];
+    const mcpFactory = this.config.createMcpClient ?? createMcpClient;
+
+    try {
+      // Tool setup is inside the try block so that a failure while wiring up
+      // MCP clients (e.g. the second factory throws) still closes any clients
+      // already created by the finally below.
+      const entries = agent.frontmatter.tools;
+      const wantsVault = entries.some((e) => e === "vault");
+      if (wantsVault && this.config.vault) {
+        Object.assign(tools, await new Vault(this.config.vault).tools());
+      }
+      for (const entry of entries) {
+        if (!isMcpToolEntry(entry)) continue;
+        const client = await mcpFactory(entry.mcp);
+        mcpClients.push(client);
+        Object.assign(tools, await client.tools());
+      }
+
+      const messages: CoreMessage[] = [
+        ...history.map((t) => ({ role: t.role, content: t.content }) as CoreMessage),
+        { role: "user", content: text },
+      ];
+
+      const result = await generateText({
+        model,
+        system: agent.systemPrompt,
+        messages,
+        tools,
+        maxSteps: 8,
+      });
+      return { text: result.text, toolCalls: result.toolCalls?.length ?? 0 };
     } finally {
       await Promise.allSettled(mcpClients.map((c) => c.close()));
+    }
+  }
+
+  private async runClaudeBackendForAgent(
+    agent: AgentDefinition,
+    history: Array<{ role: "user" | "assistant"; content: string }>,
+    text: string,
+    options: AgentRunOptions,
+  ): Promise<{ text: string; toolCalls: number }> {
+    if (!this.config.claudeAuth) {
+      throw new Error(
+        `agent "${agent.frontmatter.name}" uses backend: claude but config.claudeAuth is unset`,
+      );
+    }
+    const toolOptions: ClaudeBackendToolOptions = {
+      vault: this.config.vault,
+    };
+    const bundle = await buildClaudeTools(agent, toolOptions);
+    try {
+      const result = await runClaudeBackend({
+        auth: this.config.claudeAuth,
+        agent,
+        model: options.claudeModel,
+        system: agent.systemPrompt,
+        messages: [
+          ...history.map((t) => ({ role: t.role, content: t.content })),
+          { role: "user" as const, content: text },
+        ],
+        tools: bundle.tools,
+        maxSteps: 8,
+        client: options.anthropicClient,
+      });
+      return result;
+    } finally {
+      await bundle.close();
     }
   }
 }
