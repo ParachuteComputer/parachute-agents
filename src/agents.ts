@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const webhookTrigger = z.object({
   type: z.literal("webhook"),
-  source: z.enum(["discord", "slack", "telegram", "http"]).default("http"),
+  source: z.enum(["discord", "slack", "telegram", "http", "any"]).default("http"),
   match: z.string().default("always"),
 });
 
@@ -94,7 +94,7 @@ export function matchesWebhook(
 ): boolean {
   const trigger = agent.frontmatter.trigger;
   if (trigger.type !== "webhook") return false;
-  if (payload.source && trigger.source !== "http" && trigger.source !== payload.source) {
+  if (trigger.source !== "any" && payload.source && trigger.source !== payload.source) {
     return false;
   }
   const match = trigger.match;

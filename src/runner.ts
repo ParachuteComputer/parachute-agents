@@ -35,19 +35,33 @@ export interface AgentRunResult {
  *
  * For the Cloudflare Durable Object wrapper, see `@openparachute/agents/cloudflare`.
  */
+function wildcardRank(agent: AgentDefinition): number {
+  const t = agent.frontmatter.trigger;
+  return t.type === "webhook" && t.match === "always" ? 1 : 0;
+}
+
 export class AgentRunner {
   private _agents: Map<string, AgentDefinition>;
+  /** Agents in webhook-match priority order: specific matchers before `match: always` catch-alls. */
+  private _webhookOrder: AgentDefinition[];
 
   constructor(private readonly config: ParachuteAgentConfig) {
     this._agents = loadAgents(config.agents);
+    this._webhookOrder = [...this._agents.values()].sort((a, b) => {
+      // Catch-alls (webhook trigger with match: always) run last so specific
+      // matchers like `contains_url` claim their messages first. Array.sort is
+      // stable in modern JS, so same-tier agents keep their load order.
+      return wildcardRank(a) - wildcardRank(b);
+    });
   }
 
   agents(): Map<string, AgentDefinition> {
     return this._agents;
   }
 
+  /** First matching agent in load order wins; within the same priority tier, load order decides. `match: always` agents are ranked last so specific matchers claim their messages first. */
   matchWebhook(payload: { text?: string; source?: string }): AgentDefinition | undefined {
-    for (const agent of this._agents.values()) {
+    for (const agent of this._webhookOrder) {
       if (matchesWebhook(agent, payload)) return agent;
     }
     return undefined;
