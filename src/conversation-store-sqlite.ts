@@ -8,6 +8,11 @@ import type { ConversationStore, ConversationTurn } from "./conversation-store.j
 export class SqliteConversationStore implements ConversationStore {
   private readonly db: Database;
 
+  /**
+   * @param path SQLite file to open. Default `./.agents/conversations.db`
+   *   resolves relative to `process.cwd()`, not the package root — pin it to
+   *   an absolute path if you want predictable placement across invocations.
+   */
   constructor(path = "./.agents/conversations.db") {
     this.db = new Database(path, { create: true });
     this.db.exec(`
@@ -27,13 +32,23 @@ export class SqliteConversationStore implements ConversationStore {
       .run(conversationId, turn.ts, turn.role, turn.content);
   }
 
+  async appendBatch(conversationId: string, turns: ConversationTurn[]): Promise<void> {
+    const insert = this.db.query(
+      "INSERT INTO turns (conversation_id, ts, role, content) VALUES (?, ?, ?, ?)",
+    );
+    const tx = this.db.transaction((rows: ConversationTurn[]) => {
+      for (const t of rows) insert.run(conversationId, t.ts, t.role, t.content);
+    });
+    tx(turns);
+  }
+
   async history(conversationId: string, limit: number): Promise<ConversationTurn[]> {
     const rows = this.db
       .query<
         { ts: number; role: "user" | "assistant"; content: string },
         [string, number]
       >(
-        "SELECT ts, role, content FROM turns WHERE conversation_id = ? ORDER BY ts DESC LIMIT ?",
+        "SELECT ts, role, content FROM turns WHERE conversation_id = ? ORDER BY ts DESC, rowid DESC LIMIT ?",
       )
       .all(conversationId, limit);
     return rows.reverse().map((r) => ({ role: r.role, content: r.content, ts: r.ts }));

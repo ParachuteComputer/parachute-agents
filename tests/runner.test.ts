@@ -89,13 +89,12 @@ test("runAgent with conversationId: loads prior turns and appends new pair", asy
     agents: { "general.md": generalChat },
     provider: { name: "x", baseURL: "http://x", apiKey: "x" },
     conversationStore: store,
-    providerOverride: () => makeMock(capture, "second response"),
   });
 
   const result = await r.runAgent(
     "general-chat",
     { text: "second" },
-    { conversationId: "telegram:chat1" },
+    { conversationId: "telegram:chat1", model: makeMock(capture, "second response") },
   );
 
   expect(result.text).toBe("second response");
@@ -122,10 +121,9 @@ test("runAgent without conversationId: no history loaded, no turns appended", as
     agents: { "general.md": generalChat },
     provider: { name: "x", baseURL: "http://x", apiKey: "x" },
     conversationStore: store,
-    providerOverride: () => makeMock(capture, "ok"),
   });
 
-  await r.runAgent("general-chat", { text: "hi" });
+  await r.runAgent("general-chat", { text: "hi" }, { model: makeMock(capture, "ok") });
 
   const prompt = capture.calls[0]!.prompt;
   expect(prompt.filter((p) => p.role === "user")).toHaveLength(1);

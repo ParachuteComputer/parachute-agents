@@ -55,6 +55,17 @@ test("sqlite: clear empties the conversation", async () => {
   s.close();
 });
 
+test("sqlite: appendBatch is atomic and preserves order", async () => {
+  const s = new SqliteConversationStore(join(tmp, "batch.db"));
+  await s.appendBatch("c1", [
+    { role: "user", content: "u1", ts: 100 },
+    { role: "assistant", content: "a1", ts: 100 },
+  ]);
+  const h = await s.history("c1", 10);
+  expect(h.map((t) => `${t.role}:${t.content}`)).toEqual(["user:u1", "assistant:a1"]);
+  s.close();
+});
+
 test("sqlite: persists across new instance pointing at same file", async () => {
   const path = join(tmp, "persist.db");
   const s1 = new SqliteConversationStore(path);
