@@ -1,4 +1,4 @@
-# Example wrangler config for a downstream app using @openparachute/agents.
+# Example wrangler config for a downstream app using @openparachute/agent.
 # Copy into your app's root as wrangler.toml and adjust.
 
 name = "my-parachute-agent"

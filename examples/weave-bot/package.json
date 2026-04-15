@@ -9,7 +9,7 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@openparachute/agents": "file:../..",
+    "@openparachute/agent": "file:../..",
     "agents": "^0.0.80",
     "ai": "^4.0.0"
   },

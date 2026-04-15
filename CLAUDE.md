@@ -1,4 +1,4 @@
-# @openparachute/agents
+# @openparachute/agent
 
 Framework for building stateful AI agents on Cloudflare or self-hosted Bun, with native Parachute Vault integration. The "managed agents" platform that the rest of the Parachute ecosystem composes into.
 
@@ -30,8 +30,8 @@ src/
 
 **Entry-point discipline:** `src/cloudflare.ts` pulls in `partyserver` (needs the
 `cloudflare:workers` virtual module), so it must never be imported from the base
-entry. Self-hosted runtimes import from `@openparachute/agents`; CF Workers import
-`ParachuteAgent` from `@openparachute/agents/cloudflare`.
+entry. Self-hosted runtimes import from `@openparachute/agent`; CF Workers import
+`ParachuteAgent` from `@openparachute/agent/cloudflare`.
 
 ## Agent schema (sketch)
 

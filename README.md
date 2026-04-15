@@ -1,4 +1,4 @@
-# @openparachute/agents
+# @openparachute/agent
 
 **Parachute Managed Agents.** A thin framework for building stateful AI agents that natively know how to talk to a Parachute Vault. Deploy to Cloudflare Workers for edge + per-agent Durable Objects, or run the same agents on a self-hosted Bun server — the agent markdown is identical across both.
 
@@ -19,15 +19,15 @@ The result: a Discord bot that watches a channel for URLs, extracts event detail
 
 `weave-bot-orb` is ~3000 lines of Python across 3 services (FastAPI agent + Discord bot + Slack bot), uses Playwright + per-org config + per-org Grist documents + multi-platform webhook routing. It works, but every new feature touches three places and storage is bolted on as a side effect.
 
-A `@openparachute/agents` app is one runtime wrapper, one folder of markdown agents, and one vault. New features are new markdown files. Storage is the vault — no Grist, no SQLite-per-platform, no callback dance.
+A `@openparachute/agent` app is one runtime wrapper, one folder of markdown agents, and one vault. New features are new markdown files. Storage is the vault — no Grist, no SQLite-per-platform, no callback dance.
 
 ## Which import do I use?
 
 | Runtime | Import from | What you get |
 |---|---|---|
-| Bun / Node / any JS w/ fetch | `@openparachute/agents` | `AgentRunner`, vault, connectors, handlers — runtime-agnostic |
-| Cloudflare Workers (stateful DO) | `@openparachute/agents/cloudflare` | `ParachuteAgent` (extends CF `Agent<Env, State>`) |
-| Bun HTTP adapter | `@openparachute/agents/adapters/node` | `serveBun`, `loadAgentsFromDir`, `startSelfHosted` |
+| Bun / Node / any JS w/ fetch | `@openparachute/agent` | `AgentRunner`, vault, connectors, handlers — runtime-agnostic |
+| Cloudflare Workers (stateful DO) | `@openparachute/agent/cloudflare` | `ParachuteAgent` (extends CF `Agent<Env, State>`) |
+| Bun HTTP adapter | `@openparachute/agent/adapters/node` | `serveBun`, `loadAgentsFromDir`, `startSelfHosted` |
 
 The Cloudflare entry pulls `partyserver` (needs `cloudflare:workers` virtual module) — only import it from Worker code. The base entry is safe everywhere.
 
@@ -51,7 +51,7 @@ my-agent/
 ```
 my-agent/
 ├── agents/*.md            # loaded from disk at startup
-└── src/index.ts           # import { startSelfHosted } from "@openparachute/agents/adapters/node"
+└── src/index.ts           # import { startSelfHosted } from "@openparachute/agent/adapters/node"
 ```
 
 `examples/weave-bot-selfhosted/` is the reference. Run with `bun src/index.ts`.
@@ -61,8 +61,8 @@ my-agent/
 Chat agents get threaded history automatically, scoped per `(source, chat_id)` — so a Telegram thread feels like a continuing conversation instead of a series of amnesiac replies. The default store is in-process (`MemoryConversationStore`); swap in `SqliteConversationStore` for a Bun-backed file, or pass your own `ConversationStore` implementation via `conversationStore` in the runner config. Generic `/webhook` callers can opt in per-request by passing `meta.conversation_id`.
 
 ```ts
-import { AgentRunner } from "@openparachute/agents";
-import { SqliteConversationStore } from "@openparachute/agents/sqlite";
+import { AgentRunner } from "@openparachute/agent";
+import { SqliteConversationStore } from "@openparachute/agent/sqlite";
 
 const runner = new AgentRunner({
   agents,
@@ -73,7 +73,7 @@ const runner = new AgentRunner({
 
 ### Run log
 
-Every agent invocation is recorded — agent name, input, output, tool-call count, duration, error, trigger. Query via `runner.runs({agent, limit, since})` or `runner.run(id)`. Default is in-memory (capped at 1000 per agent); swap in `SqliteRunLog` from `@openparachute/agents/run-log-sqlite` for persistence. Foundation for the upcoming management UI.
+Every agent invocation is recorded — agent name, input, output, tool-call count, duration, error, trigger. Query via `runner.runs({agent, limit, since})` or `runner.run(id)`. Default is in-memory (capped at 1000 per agent); swap in `SqliteRunLog` from `@openparachute/agent/run-log-sqlite` for persistence. Foundation for the upcoming management UI.
 
 ### Cron triggers
 
@@ -89,6 +89,24 @@ model: nvidia/nemotron-3-super-120b-a12b
 tools: [vault]
 ---
 ```
+
+### Local management CLI
+
+Once agents are running, `parachute-agent` is a read-mostly inspector for what the runner wrote to disk. No server, no network — just sqlite + the `./agents/` directory.
+
+```sh
+parachute-agent agents list                          # loaded agents + triggers
+parachute-agent agents show daily-digest             # frontmatter + body
+parachute-agent runs list --agent daily-digest       # recent invocations
+parachute-agent runs show <id-prefix>                # full run detail
+parachute-agent convo list                           # conversation IDs + turn counts
+parachute-agent convo show telegram:chat1            # full thread
+parachute-agent convo clear telegram:chat1 --yes     # wipe one conversation
+```
+
+Defaults: `./agents/` for markdown, `./.agents/` for sqlite dbs. Override with `--agents-dir` / `--db-dir`. Run `parachute-agent --help` for the full list.
+
+> **Coming:** an umbrella `@openparachute/cli` that bundles this plus vault/daily tooling under one binary.
 
 ## The shape (sketch)
 

@@ -1,6 +1,9 @@
-import { join } from "node:path";
-import { startSelfHosted } from "@openparachute/agents/adapters/node";
-import { telegram, discord } from "@openparachute/agents/connectors";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { startSelfHosted } from "@openparachute/agent/adapters/node";
+import { telegram, discord } from "@openparachute/agent/connectors";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 const env = process.env;
 function required(name: string): string {
@@ -10,7 +13,7 @@ function required(name: string): string {
 }
 
 const { server } = await startSelfHosted({
-  agentsDir: join(import.meta.dir, "..", "agents"),
+  agentsDir: join(here, "..", "agents"),
   config: {
     vault: {
       url: required("VAULT_URL"),
