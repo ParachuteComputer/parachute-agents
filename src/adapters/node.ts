@@ -53,20 +53,35 @@ export function buildHandler(runner: AgentRunner, opts: ServeOptions = {}) {
 
   return async function handler(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method !== "POST") return new Response("not found", { status: 404 });
+    const started = Date.now();
+    const log = (status: number, note?: string) => {
+      const ms = Date.now() - started;
+      // eslint-disable-next-line no-console
+      console.log(`[agents] ${request.method} ${url.pathname} → ${status} (${ms}ms)${note ? " " + note : ""}`);
+    };
+
+    if (request.method !== "POST") {
+      log(404, "non-POST");
+      return new Response("not found", { status: 404 });
+    }
 
     if (url.pathname === webhookPath) {
-      return handleWebhook(runner, request);
+      const res = await handleWebhook(runner, request);
+      log(res.status, "generic webhook");
+      return res;
     }
     for (const c of connectors) {
       if (url.pathname === c.path) {
-        return handleConnectorWebhook(runner, request, {
+        const res = await handleConnectorWebhook(runner, request, {
           connector: c.connector,
           config: c.config,
           autoReply: c.autoReply,
         });
+        log(res.status, `connector:${c.path}`);
+        return res;
       }
     }
+    log(404, "no route match");
     return new Response("not found", { status: 404 });
   };
 }
